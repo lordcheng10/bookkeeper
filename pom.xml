@@ -1063,6 +1063,16 @@
                   <goal>prepare-agent</goal>
                 </goals>
               </execution>
+              <execution>
+                <id>post-test</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>report</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>target/report</outputDirectory>
+                </configuration>
+              </execution>
             </executions>
           </plugin>
         </plugins>
