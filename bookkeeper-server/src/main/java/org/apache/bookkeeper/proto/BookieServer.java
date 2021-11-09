@@ -63,21 +63,29 @@ import org.slf4j.LoggerFactory;
  *
  */
 public class BookieServer {
+    // 服务器配置
     final ServerConfiguration conf;
+    // Bookie Netty 服务器
     BookieNettyServer nettyServer;
+    // 运行标志
     private volatile boolean running = false;
+    // bookie
     private final Bookie bookie;
+    // 关闭监视器
     DeathWatcher deathWatcher;
     private static final Logger LOG = LoggerFactory.getLogger(BookieServer.class);
 
     int exitCode = ExitCode.OK;
 
+    // 请求处理器
     // request processor
     private final RequestProcessor requestProcessor;
 
+    // 状态记录器
     // Expose Stats
     private final StatsLogger statsLogger;
 
+    // 未捕获异常处理方法
     // Exception handler
     private volatile UncaughtExceptionHandler uncaughtExceptionHandler = null;
 
@@ -102,6 +110,7 @@ public class BookieServer {
             };
         }
         this.conf = conf;
+        //校验用户是否有启动权限
         validateUser(conf);
         String configAsString;
         try {
@@ -111,8 +120,10 @@ public class BookieServer {
             LOG.error("Got ParseJsonException while converting Config to JSONString", pe);
         }
 
+        //根据配置创建内存分配器
         ByteBufAllocator allocator = getAllocator(conf);
         this.statsLogger = statsLogger;
+        //创建 Netty 服务器处理 bookie 请求
         this.nettyServer = new BookieNettyServer(this.conf, null, allocator);
         try {
             this.bookie = newBookie(conf, allocator, bookieServiceInfoProvider);
@@ -121,10 +132,12 @@ public class BookieServer {
             this.nettyServer.shutdown();
             throw e;
         }
+        //安全处理工厂，主要用于支持TLS
         final SecurityHandlerFactory shFactory;
 
         shFactory = SecurityProviderFactoryFactory
                 .getSecurityProviderFactory(conf.getTLSProviderFactoryClass());
+        // bookie 请求处理器，用于 netty Server
         this.requestProcessor = new BookieRequestProcessor(conf, bookie,
                 statsLogger.scope(SERVER_SCOPE), shFactory, allocator);
         this.nettyServer.setRequestProcessor(this.requestProcessor);

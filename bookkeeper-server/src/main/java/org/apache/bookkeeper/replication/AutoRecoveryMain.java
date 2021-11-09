@@ -58,6 +58,8 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//bookies（存储层）故障自动恢复组件。
+//其主要有两个功能：1. 选择 Auditor 领导者 2. 副本复制器（ 当有 bookie 故障时，由Auditor生成任务，副本复制器来进行数据复制）
 /**
  * Class to start/stop the AutoRecovery daemons Auditor and ReplicationWorker.
  *

@@ -614,6 +614,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
         }
     }
 
+    //这个就是关小黑屋的逻辑
     void checkForFaultyBookies() {
         List<BookieId> faultyBookies = bookieClient.getFaultyBookies();
         for (BookieId faultyBookie : faultyBookies) {
