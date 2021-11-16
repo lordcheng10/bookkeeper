@@ -698,14 +698,24 @@ public class RackawareEnsemblePlacementPolicyImpl extends TopologyAwareEnsembleP
         return selectRandomInternal(null,  numBookies, excludeBookies, predicate, ensemble);
     }
 
+    //这里会挑选出合适的bookie
+    //bookiesToSelectFrom: 可供选择的bookie
+    //numBookies: bookie数量
+    //excludeBookies:排除的bookie节点
+    //predicate:预选的节点
+    //ensemble: ensible节点
+    //BKNotEnoughBookiesException:如果没找到就往外抛BKNotEnoughBookiesException异常
     protected List<BookieNode> selectRandomInternal(List<BookieNode> bookiesToSelectFrom,
                                                     int numBookies,
                                                     Set<Node> excludeBookies,
                                                     Predicate<BookieNode> predicate,
                                                     Ensemble<BookieNode> ensemble)
         throws BKNotEnoughBookiesException {
+        //WeightedRandomSelection:加权随机选择
         WeightedRandomSelection<BookieNode> wRSelection = null;
+        //如果可供选择的bookie对象为null，也就是没有可供选择的bookie节点，那么从
         if (bookiesToSelectFrom == null) {
+            // 如果列表为空，我们需要从整个 knownBookies 集合中进行选择
             // If the list is null, we need to select from the entire knownBookies set
             wRSelection = this.weightedSelection;
             bookiesToSelectFrom = new ArrayList<BookieNode>(knownBookies.values());
