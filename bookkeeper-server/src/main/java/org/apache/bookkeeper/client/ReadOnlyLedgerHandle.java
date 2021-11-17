@@ -218,7 +218,6 @@ class ReadOnlyLedgerHandle extends LedgerHandle implements LedgerMetadataListene
         // just in case (can be removed when we validate threads)
         synchronized (metadataLock) {
             String logContext = String.format("[RecoveryEnsembleChange(ledger:%d)]", ledgerId);
-
             long lac = getLastAddConfirmed();
             LedgerMetadata metadata = getLedgerMetadata();
             List<BookieId> currentEnsemble = getCurrentEnsemble();
@@ -231,6 +230,7 @@ class ReadOnlyLedgerHandle extends LedgerHandle implements LedgerMetadataListene
                     unsetSuccessAndSendWriteRequest(newEnsemble, replaced);
                 }
             } catch (BKException.BKNotEnoughBookiesException e) {
+                //当处理读失败的时候，如果找不到额外的bookie，那么久关闭该Leadger
                 LOG.error("Could not get additional bookie to remake ensemble, closing ledger: {}", ledgerId);
 
                 handleUnrecoverableErrorDuringAdd(e.getCode());

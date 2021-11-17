@@ -31,6 +31,7 @@ public interface OpStatsLogger {
     void registerFailedEvent(long eventLatencyMillis, TimeUnit unit);
 
     /**
+     * 使用给定的 eventLatency 操作成功。 更新统计数据以反映相同情况
      * An operation succeeded with the given eventLatency. Update
      * stats to reflect the same
      * @param eventLatencyMillis The event latency

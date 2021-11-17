@@ -297,53 +297,86 @@ class BookieWatcherImpl implements BookieWatcher {
         return socketAddresses;
     }
 
+    //替换bookie节点
+    //ensembleSize:同一个Leadger可放置的bookie数
+    //writeQuorumSize: 一次同时写的bookie的数量
+    //ackQuorumSize: 写完等待ack确认的bookie数量
+    //customMetadata：自定义metadata
+    //existingBookies：存在的bookie
+    //bookieIdx：要替换的bookie
+    //excludeBookies：排除的bookie，这个是从哪里来的
     @Override
     public BookieId replaceBookie(int ensembleSize, int writeQuorumSize, int ackQuorumSize,
                                              Map<String, byte[]> customMetadata,
                                              List<BookieId> existingBookies, int bookieIdx,
                                              Set<BookieId> excludeBookies)
             throws BKNotEnoughBookiesException {
+        //开始时间
         long startTime = MathUtils.nowInNano();
+        //获取对应的bookie
         BookieId addr = existingBookies.get(bookieIdx);
+        //替换bookie的响应
         EnsemblePlacementPolicy.PlacementResult<BookieId> replaceBookieResponse;
+        //bookie地址
         BookieId socketAddress;
+        //是 Ensemble 遵守安置政策
         PlacementPolicyAdherence isEnsembleAdheringToPlacementPolicy = PlacementPolicyAdherence.FAIL;
         try {
+            // 排除和隔离的bookie
+            // 我们也首先排除被隔离的bookie
             // we exclude the quarantined bookies also first
             Set<BookieId> excludedBookiesAndQuarantinedBookies = new HashSet<BookieId>(
                     excludeBookies);
+            // 被隔离的bookie
             Set<BookieId> quarantinedBookiesSet = quarantinedBookies.asMap().keySet();
+            // 加入到excludedBookiesAndQuarantinedBookies中
             excludedBookiesAndQuarantinedBookies.addAll(quarantinedBookiesSet);
+            // 返回放置bookie的response,这里为啥会命名response？难道说这个有通过网络响应吗
+            // 在pulsar中默认是使用的RackawareEnsemblePlacementPolicyImpl这个策略
             replaceBookieResponse = placementPolicy.replaceBookie(
                     ensembleSize, writeQuorumSize, ackQuorumSize, customMetadata,
                     existingBookies, addr, excludedBookiesAndQuarantinedBookies);
+            // 获取选出的bookie节点
             socketAddress = replaceBookieResponse.getResult();
+            // isAdheringToPolicy:遵守政策
+            // isEnsembleAdheringToPlacementPolicy: 遵守放置政策的级别，有三种级别(严格遵守、软遵守、不遵守)
             isEnsembleAdheringToPlacementPolicy = replaceBookieResponse.isAdheringToPolicy();
+            // FAIL是表示没有遵守放置策略
             if (isEnsembleAdheringToPlacementPolicy == PlacementPolicyAdherence.FAIL) {
+                // 统计不遵守放置策略的次数
                 ensembleNotAdheringToPlacementPolicy.inc();
                 log.warn(
                         "replaceBookie for bookie: {} in ensemble: {} is not adhering to placement policy and"
                                 + " chose {}. excludedBookies {} and quarantinedBookies {}",
                         addr, existingBookies, socketAddress, excludeBookies, quarantinedBookiesSet);
             }
+            // 这里是干啥? 这个看起来是一个metric
             replaceBookieTimer.registerSuccessfulEvent(MathUtils.nowInNano() - startTime, TimeUnit.NANOSECONDS);
         } catch (BKNotEnoughBookiesException e) {
             if (log.isDebugEnabled()) {
+                // 没有足够的bookie，使用隔离的bookie
                 log.debug("Not enough healthy bookies available, using quarantined bookies");
             }
+            // excludeBookies是外面传入的bookie节点,不包含隔离的bookie，也就是相当于从隔离的节点去选，但这样也是有问题的：选不出的时候，才放开所有隔离的节点，
+            // 但在此之前可能会由于隔离节点太大，剩下的节点不能抗住当前压力，在升级过程中，业务做不到无感知.
             replaceBookieResponse = placementPolicy.replaceBookie(ensembleSize, writeQuorumSize, ackQuorumSize,
                     customMetadata, existingBookies, addr, excludeBookies);
+            // 获取选取的bookie节点
             socketAddress = replaceBookieResponse.getResult();
+            // 是否是严格按照放置策略来选取bookie的
             isEnsembleAdheringToPlacementPolicy = replaceBookieResponse.isAdheringToPolicy();
             if (isEnsembleAdheringToPlacementPolicy == PlacementPolicyAdherence.FAIL) {
+                //如果选取失败，metric记录下
                 ensembleNotAdheringToPlacementPolicy.inc();
                 log.warn(
                         "replaceBookie for bookie: {} in ensemble: {} is not adhering to placement policy and"
                                 + " chose {}. excludedBookies {}",
                         addr, existingBookies, socketAddress, excludeBookies);
             }
+            //统计失败的处理耗时
             replaceBookieTimer.registerFailedEvent(MathUtils.nowInNano() - startTime, TimeUnit.NANOSECONDS);
         }
+        //返回选择出来用来替换坏bookie节点的节点
         return socketAddress;
     }
 
@@ -354,6 +387,7 @@ class BookieWatcherImpl implements BookieWatcher {
     @Override
     public void quarantineBookie(BookieId bookie) {
         if (quarantinedBookies.getIfPresent(bookie) == null) {
+            //这是一个cache，当到时间，会过期移除过期的bookie节点
             quarantinedBookies.put(bookie, Boolean.TRUE);
             log.warn("Bookie {} has been quarantined because of read/write errors.", bookie);
         }

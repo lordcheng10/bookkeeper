@@ -539,6 +539,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
         this.ledgerIdGenerator = ledgerManagerFactory.newLedgerIdGenerator();
 
         this.bookieQuarantineRatio = conf.getBookieQuarantineRatio();
+        //在构建bookkeeper客户端的时候，就会开启health检查逻辑
         scheduleBookieHealthCheckIfEnabled(conf);
     }
 
@@ -602,7 +603,9 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
     }
 
     void scheduleBookieHealthCheckIfEnabled(ClientConfiguration conf) {
+        //如果开启了health检查，才会启动
         if (conf.isBookieHealthCheckEnabled()) {
+            //这个会定时周期的去检查
             scheduler.scheduleAtFixedRate(new SafeRunnable() {
 
                 @Override
@@ -614,8 +617,11 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
         }
     }
 
+
     void checkForFaultyBookies() {
+        //写入失败的bookie节点
         List<BookieId> faultyBookies = bookieClient.getFaultyBookies();
+        //遍历这些节点，按照概率bookieQuarantineRatio去隔离，当然隔离还有一个阈值，默认是100
         for (BookieId faultyBookie : faultyBookies) {
             if (Math.random() <= bookieQuarantineRatio) {
                 bookieWatcher.quarantineBookie(faultyBookie);

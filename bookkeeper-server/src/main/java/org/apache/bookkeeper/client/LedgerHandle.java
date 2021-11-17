@@ -1764,6 +1764,7 @@ public class LedgerHandle implements WriteHandle {
             errorOutPendingAdds(rc);
             return;
         }
+        //同样的是关闭leader
         LOG.error("Closing ledger {} due to {}", ledgerId, BKException.codeLogger(rc));
         asyncCloseInternal(NoopCloseCallback.instance, null, rc);
     }
@@ -1953,6 +1954,7 @@ public class LedgerHandle implements WriteHandle {
                 this::setLedgerMetadata)
             .run().whenCompleteAsync((metadata, ex) -> {
                     if (ex != null) {
+                        //如果写失败，那么处理逻辑就在这里
                         LOG.warn("{}[attempt:{}] Exception changing ensemble", logContext, attempts.get(), ex);
                         handleUnrecoverableErrorDuringAdd(BKException.getExceptionCode(ex, WriteException));
                     } else if (metadata.getValue().isClosed()) {

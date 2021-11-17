@@ -388,6 +388,7 @@ abstract class TopologyAwareEnsemblePlacementPolicy implements
             this.minNumRacksPerWriteQuorum = minNumRacksPerWriteQuorum;
         }
 
+        //candidate是候选节点，ensemble是选择的集合
         @Override
         public boolean apply(BookieNode candidate, Ensemble<BookieNode> ensemble) {
             if (ensemble != this) {

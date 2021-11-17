@@ -953,6 +953,7 @@ public abstract class AbstractConfiguration<T extends AbstractConfiguration>
     }
 
     /**
+     * 获取强制每个写入仲裁的最小机架数的标志。
      * Get the flag which enforces the minimum number of racks per write quorum.
      */
     public boolean getEnforceMinNumRacksPerWriteQuorum() {

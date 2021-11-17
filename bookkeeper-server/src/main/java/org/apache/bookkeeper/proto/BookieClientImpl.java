@@ -151,17 +151,23 @@ public class BookieClientImpl implements BookieClient, PerChannelBookieClientFac
         }
     }
 
+    //获取读写bookie失败的节点
     @Override
     public List<BookieId> getFaultyBookies() {
+        //失败的faultyBookies集合
         List<BookieId> faultyBookies = Lists.newArrayList();
+        //遍历每个bookie节点对应的连接池
         for (PerChannelBookieClientPool channelPool : channels.values()) {
-            if (channelPool instanceof DefaultPerChannelBookieClientPool) {
+            if (channelPool instanceof DefaultPerChannelBookieClientPool) {//必须要是默认的连接池类型才行
                 DefaultPerChannelBookieClientPool pool = (DefaultPerChannelBookieClientPool) channelPool;
+                //这个是到某一个bookie总的读写失败次数，如果大于100次，那么久加入到失败的bookie集合中,对应的失败次数阈值是bookieErrorThresholdPerInterval
+                //这里回重置为0，把对应的失败次数重置为0
                 if (pool.errorCounter.getAndSet(0) >= bookieErrorThresholdPerInterval) {
                     faultyBookies.add(pool.address);
                 }
             }
         }
+        //返回失败的bookie集合
         return faultyBookies;
     }
 

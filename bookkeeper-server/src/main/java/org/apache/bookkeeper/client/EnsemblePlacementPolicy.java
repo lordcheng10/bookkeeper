@@ -442,6 +442,11 @@ public interface EnsemblePlacementPolicy {
     }
 
     /**
+     * PlacementPolicyAdherence 的枚举。 目前我们支持 PlacementPolicyAdherence 的三值枚举。
+     * 如果严格遵守安置政策，则为 MEETS_STRICT，如果不遵守安置政策，则为 FAIL。
+     * 但是有一些放置策略，例如 ZoneAwareEnsemblePlacementPolicy，它定义了软遵守级别以支持区域关闭场景。
+     * */
+    /**
      * enum for PlacementPolicyAdherence. Currently we are supporting tri-value
      * enum for PlacementPolicyAdherence. If placement policy is met strictly
      * then it is MEETS_STRICT, if it doesn't adhere to placement policy then it
