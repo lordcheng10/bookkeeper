@@ -252,7 +252,6 @@ public class ReplicationWorker implements Runnable {
             }
         }
 
-        //TODO-chenlin:修改日志级别WARN
         LOG.info("ReplicationWorker exited loop!");
     }
 
@@ -280,10 +279,13 @@ public class ReplicationWorker implements Runnable {
         Stopwatch stopwatch = Stopwatch.createStarted();
         boolean success = false;
         try {
+            // 开始复制
             success = rereplicate(ledgerIdToReplicate);
         } finally {
+            // 统计耗时
             long latencyMillis = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS);
             if (success) {
+                // 如果成功就统计成功耗时
                 rereplicateOpStats.registerSuccessfulEvent(latencyMillis, TimeUnit.MILLISECONDS);
             } else {
                 rereplicateOpStats.registerFailedEvent(latencyMillis, TimeUnit.MILLISECONDS);
