@@ -251,6 +251,8 @@ public class ReplicationWorker implements Runnable {
                 waitBackOffTime(rwRereplicateBackoffMs);
             }
         }
+
+        //TODO-chenlin:修改日志级别WARN
         LOG.info("ReplicationWorker exited loop!");
     }
 
@@ -262,15 +264,19 @@ public class ReplicationWorker implements Runnable {
         }
     }
 
+    // 将复制不足的片段从失败的bookie分类账复制到targetBookie
+    // TODO-chenlin: rereplicate 命名感觉怪怪的， 改为replicate不行吗
     /**
      * Replicates the under replicated fragments from failed bookie ledger to
      * targetBookie.
      */
     private void rereplicate() throws InterruptedException, BKException,
             UnavailableException {
+        // 获取under replica的副本
         long ledgerIdToReplicate = underreplicationManager
                 .getLedgerToRereplicate();
 
+        // 计算经过的时间工具类
         Stopwatch stopwatch = Stopwatch.createStarted();
         boolean success = false;
         try {
