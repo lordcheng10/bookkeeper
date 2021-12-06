@@ -1050,30 +1050,49 @@ public class BookKeeperAdmin implements AutoCloseable {
                 lh, ensemble, bookieIndexesToRereplicate, Optional.of(bookiesToRereplicate));
     }
 
+    /**
+     * lh：是对应的ledger 处理方法
+     * ensemble: 该leadger可以放置的bookie
+     * bookieIndexesToRereplicate: 要不放置的bookie
+     * */
     private Map<Integer, BookieId> getReplacementBookiesByIndexes(
                 LedgerHandle lh,
                 List<BookieId> ensemble,
                 Set<Integer> bookieIndexesToRereplicate,
                 Optional<Set<BookieId>> excludedBookies)
             throws BKException.BKNotEnoughBookiesException {
+        LOG.info("chenlin1:getReplacementBookiesByIndexes excludedBookies=" + excludedBookies.get() + ",ensemble=" + ensemble);
+        // 要复制的目标bookie
         // target bookies to replicate
         Map<Integer, BookieId> targetBookieAddresses =
                 Maps.newHashMapWithExpectedSize(bookieIndexesToRereplicate.size());
+        // 要排除整体分配的bookie
         // bookies to exclude for ensemble allocation
         Set<BookieId> bookiesToExclude = Sets.newHashSet();
         if (excludedBookies.isPresent()) {
             bookiesToExclude.addAll(excludedBookies.get());
         }
-
+        LOG.info("chenlin2:bookiesToExclude=" + bookiesToExclude);
+        // 复制需要排除的bookie
         // excluding bookies that need to be replicated
         for (Integer bookieIndex : bookieIndexesToRereplicate) {
             BookieId bookie = ensemble.get(bookieIndex);
             bookiesToExclude.add(bookie);
         }
+        LOG.info("chenlin3:bookiesToExclude=" + bookiesToExclude);
 
+        // 分配bookie
         // allocate bookies
         for (Integer bookieIndex : bookieIndexesToRereplicate) {
+            //原来的bookie节点
             BookieId oldBookie = ensemble.get(bookieIndex);
+            //获取替换的bookie
+            LOG.info("chenlin4:lh.getLedgerMetadata().getEnsembleSize()=" + lh.getLedgerMetadata().getEnsembleSize() +
+                    ",lh.getLedgerMetadata().getWriteQuorumSize()=" + lh.getLedgerMetadata().getWriteQuorumSize() +
+                    ",lh.getLedgerMetadata().getAckQuorumSize()=" + lh.getLedgerMetadata().getAckQuorumSize() +
+                    ",bookiesToExclude=" + bookiesToExclude + ",oldBookie=" + oldBookie+
+                    ",bookiesToExclude=" + bookiesToExclude +
+                    "，ensemble=" + ensemble);
             EnsemblePlacementPolicy.PlacementResult<BookieId> replaceBookieResponse =
                     bkc.getPlacementPolicy().replaceBookie(
                             lh.getLedgerMetadata().getEnsembleSize(),
@@ -1083,8 +1102,11 @@ public class BookKeeperAdmin implements AutoCloseable {
                             ensemble,
                             oldBookie,
                             bookiesToExclude);
+            //找到新的bookie
             BookieId newBookie = replaceBookieResponse.getResult();
+            //是否是严格遵守放置策略
             PlacementPolicyAdherence isEnsembleAdheringToPlacementPolicy = replaceBookieResponse.isAdheringToPolicy();
+            //如果不是严格遵守的，那么就输出日志
             if (isEnsembleAdheringToPlacementPolicy == PlacementPolicyAdherence.FAIL) {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug(
@@ -1093,10 +1115,12 @@ public class BookKeeperAdmin implements AutoCloseable {
                             oldBookie, ensemble, newBookie);
                 }
             }
+            //放入目标bookie上
             targetBookieAddresses.put(bookieIndex, newBookie);
+            //需要排除的bookie节点
             bookiesToExclude.add(newBookie);
         }
-
+        //返回找到的bookie
         return targetBookieAddresses;
     }
 
@@ -1122,13 +1146,22 @@ public class BookKeeperAdmin implements AutoCloseable {
             final LedgerFragment ledgerFragment,
             final BiConsumer<Long, Long> onReadEntryFailureCallback)
             throws InterruptedException, BKException {
+        // 隔离的bookie名单
         Optional<Set<BookieId>> excludedBookies = Optional.empty();
+        // 找到要代替的bookie节点,targetBookieAddresses应该是选来承载数据的节点
         Map<Integer, BookieId> targetBookieAddresses =
                 getReplacementBookiesByIndexes(lh, ledgerFragment.getEnsemble(),
                         ledgerFragment.getBookiesIndexes(), excludedBookies);
+        // 开始复制
         replicateLedgerFragment(lh, ledgerFragment, targetBookieAddresses, onReadEntryFailureCallback);
     }
 
+    /**
+     * lh：ledger处理
+     * ledgerFragment：要复制的fragment
+     * targetBookieAddresses: 目标bookie
+     * onReadEntryFailureCallback：失败call back
+     * */
     private void replicateLedgerFragment(LedgerHandle lh,
             final LedgerFragment ledgerFragment,
             final Map<Integer, BookieId> targetBookieAddresses,

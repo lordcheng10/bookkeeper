@@ -91,6 +91,10 @@ public interface LedgerUnderreplicationManager extends AutoCloseable {
     Iterator<UnderreplicatedLedger> listLedgersToRereplicate(Predicate<List<String>> predicate);
 
     /**
+     * 获取复制不足的分类帐以进行重新复制。
+     * 分类帐应该被锁定，这样其他代理就不会从这次调用中收到分类帐。
+     * 分类帐应保持锁定状态，直到调用 markLedgerComplete 或 #releaseLedger。
+     * 此调用是阻塞的，因此在分类帐可用于重新复制之前不会返回。
      * Acquire a underreplicated ledger for rereplication. The ledger
      * should be locked, so that no other agent will receive the ledger
      * from this call.

@@ -707,6 +707,7 @@ public class Auditor implements AutoCloseable {
                 submitShutdownTask();
             }
 
+            //检查bookie任务
             scheduleBookieCheckTask();
             scheduleCheckAllLedgersTask();
             schedulePlacementPolicyCheckTask();
@@ -720,6 +721,7 @@ public class Auditor implements AutoCloseable {
             LOG.info("Auditor periodic bookie checking disabled, running once check now anyhow");
             executor.submit(safeRun(bookieCheck));
         } else {
+            //每隔一天会检查一下，是否有lost bookie
             LOG.info("Auditor periodic bookie checking enabled" + " 'auditorPeriodicBookieCheckInterval' {} seconds",
                     bookieCheckInterval);
             executor.scheduleAtFixedRate(safeRun(bookieCheck), 0, bookieCheckInterval, TimeUnit.SECONDS);

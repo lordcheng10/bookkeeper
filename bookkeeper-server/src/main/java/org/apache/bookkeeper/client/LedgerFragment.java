@@ -119,6 +119,7 @@ public class LedgerFragment {
     }
 
     /**
+     * 获取 failedBookie 索引。
      * Gets the failedBookie index.
      */
     public Set<Integer> getBookiesIndexes() {

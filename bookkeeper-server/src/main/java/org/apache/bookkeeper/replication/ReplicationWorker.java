@@ -232,26 +232,35 @@ public class ReplicationWorker implements Runnable {
 
     @Override
     public void run() {
+        //是否正在运行
         workerRunning = true;
         while (workerRunning) {
             try {
+                //开始复制
                 rereplicate();
             } catch (InterruptedException e) {
+                //被中断了
                 LOG.info("InterruptedException "
                         + "while replicating fragments", e);
+                //被中断的话，就不retry back了，直接shutdown
                 shutdown();
                 Thread.currentThread().interrupt();
                 return;
             } catch (BKException e) {
+                //复制的时候异常了
                 LOG.error("BKException while replicating fragments", e);
+                //retry back ,默认rwRereplicateBackoffMs=5秒
                 waitBackOffTime(rwRereplicateBackoffMs);
             } catch (UnavailableException e) {
+                //不可获得异常
                 LOG.error("UnavailableException "
                         + "while replicating fragments", e);
+                //retry back ,默认rwRereplicateBackoffMs=5秒
                 waitBackOffTime(rwRereplicateBackoffMs);
             }
         }
 
+        //退出日志
         LOG.info("ReplicationWorker exited loop!");
     }
 
@@ -271,7 +280,7 @@ public class ReplicationWorker implements Runnable {
      */
     private void rereplicate() throws InterruptedException, BKException,
             UnavailableException {
-        // 获取under replica的副本
+        // 获取under replica的副本,这个实际就是在underreplica目录下去模式匹配对应的leaderId，并且判断是否是自己负责的
         long ledgerIdToReplicate = underreplicationManager
                 .getLedgerToRereplicate();
 
@@ -288,6 +297,7 @@ public class ReplicationWorker implements Runnable {
                 // 如果成功就统计成功耗时
                 rereplicateOpStats.registerSuccessfulEvent(latencyMillis, TimeUnit.MILLISECONDS);
             } else {
+                // 统计失败耗时
                 rereplicateOpStats.registerFailedEvent(latencyMillis, TimeUnit.MILLISECONDS);
             }
         }
@@ -306,39 +316,51 @@ public class ReplicationWorker implements Runnable {
         getExceptionCounter(e.getClass().getSimpleName()).inc();
     }
 
+    //如果该ledgerFragment中没有不可读的entry的话，就直接返回true，否则返回false
     private boolean tryReadingFaultyEntries(LedgerHandle lh, LedgerFragment ledgerFragment) {
+        //获取ledgerId
         long ledgerId = lh.getId();
+        //这个ledger不能读的entries
         ConcurrentSkipListSet<Long> entriesUnableToReadForThisLedger = unableToReadEntriesForReplication
                 .getIfPresent(ledgerId);
+        //如果entriesUnableToReadForThisLedger等于null，那么久返回true
         if (entriesUnableToReadForThisLedger == null) {
             return true;
         }
+        // 该fragment中第一个entryId
         long firstEntryIdOfFragment = ledgerFragment.getFirstEntryId();
+        // 该fragment中最后一个entryId
         long lastEntryIdOfFragment = ledgerFragment.getLastKnownEntryId();
+        // 从entriesUnableToReadForThisLedger中去获取，不能读的entry消息
         NavigableSet<Long> entriesOfThisFragmentUnableToRead = entriesUnableToReadForThisLedger
                 .subSet(firstEntryIdOfFragment, true, lastEntryIdOfFragment, true);
+        // 如果为空，那么就返回true
         if (entriesOfThisFragmentUnableToRead.isEmpty()) {
             return true;
         }
         final CountDownLatch multiReadComplete = new CountDownLatch(1);
         final AtomicInteger numOfResponsesToWaitFor = new AtomicInteger(entriesOfThisFragmentUnableToRead.size());
         final AtomicInteger returnRCValue = new AtomicInteger(BKException.Code.OK);
+        //遍历该ledger中，不可读的entryId
         for (long entryIdToRead : entriesOfThisFragmentUnableToRead) {
             if (multiReadComplete.getCount() == 0) {
+                // 如果 asyncRead 请求已经失败，则中断循环。
                 /*
                  * if an asyncRead request had already failed then break the
                  * loop.
                  */
                 break;
             }
+            //尝试着读该entry
             lh.asyncReadEntries(entryIdToRead, entryIdToRead, (rc, ledHan, seq, ctx) -> {
                 long thisEntryId = (Long) ctx;
-                if (rc == BKException.Code.OK) {
+                if (rc == BKException.Code.OK) {//如果读成功了，那么这里multiReadComplete.countDown
                     entriesUnableToReadForThisLedger.remove(thisEntryId);
                     if (numOfResponsesToWaitFor.decrementAndGet() == 0) {
                         multiReadComplete.countDown();
                     }
                 } else {
+                    //否则就读失败了
                     LOG.error("Received error: {} while trying to read entry: {} of ledger: {} in ReplicationWorker",
                             rc, entryIdToRead, ledgerId);
                     returnRCValue.compareAndSet(BKException.Code.OK, rc);
@@ -351,6 +373,7 @@ public class ReplicationWorker implements Runnable {
                 }
             }, entryIdToRead);
         }
+        //等着完成，因为asyncReadEntries是异步的
         try {
             multiReadComplete.await();
         } catch (InterruptedException e) {
@@ -358,6 +381,7 @@ public class ReplicationWorker implements Runnable {
             Thread.currentThread().interrupt();  // set interrupt flag
             return false;
         }
+        //判断读取结果是否正常
         return (returnRCValue.get() == BKException.Code.OK);
     }
 
@@ -367,9 +391,12 @@ public class ReplicationWorker implements Runnable {
             LOG.debug("Going to replicate the fragments of the ledger: {}", ledgerIdToReplicate);
         }
 
+        //是否推迟分类帐锁定释放？
         boolean deferLedgerLockRelease = false;
 
+        //打开一个leadeger
         try (LedgerHandle lh = admin.openLedgerNoRecovery(ledgerIdToReplicate)) {
+            //获取掉队的fragment,auditorLedgerVerificationPercentage是百分比，判断一个fragment需要被修复的百分比，默认是0
             Set<LedgerFragment> fragments =
                 getUnderreplicatedFragments(lh, conf.getAuditorLedgerVerificationPercentage());
 
@@ -377,42 +404,53 @@ public class ReplicationWorker implements Runnable {
                 LOG.debug("Founds fragments {} for replication from ledger: {}", fragments, ledgerIdToReplicate);
             }
 
+            //然后下面就开始遍历修复
             boolean foundOpenFragments = false;
             for (LedgerFragment ledgerFragment : fragments) {
                 if (!ledgerFragment.isClosed()) {
+                    //如果有某个fragment被打开着，那么就需要标记下
                     foundOpenFragments = true;
                     continue;
                 }
+                //尝试着读下副本，如果失败，那么就放弃复制该ledger,现在看来这个方法并没有起到过滤的作用
                 if (!tryReadingFaultyEntries(lh, ledgerFragment)) {
                     LOG.error("Failed to read faulty entries, so giving up replicating ledgerFragment {}",
                             ledgerFragment);
                     continue;
                 }
                 try {
+                    //开始复制,lh是对应leadger的处理流方法，ledgerFragment是要处理的ledgerFragment
                     admin.replicateLedgerFragment(lh, ledgerFragment, onReadEntryFailureCallback);
                 } catch (BKException.BKBookieHandleNotAvailableException e) {
                     LOG.warn("BKBookieHandleNotAvailableException while replicating the fragment", e);
                 } catch (BKException.BKLedgerRecoveryException e) {
                     LOG.warn("BKLedgerRecoveryException while replicating the fragment", e);
                 } catch (BKException.BKNotEnoughBookiesException e) {
+                    //在这里疯狂刷
                     LOG.warn("BKNotEnoughBookiesException while replicating the fragment", e);
                 }
             }
+            //如果该leadger有未关闭的fragment，或者有bookie丢失，那么久会释放锁，并返回false
             if (foundOpenFragments || isLastSegmentOpenAndMissingBookies(lh)) {
                 deferLedgerLockRelease = true;
+                //释放锁
                 deferLedgerLockRelease(ledgerIdToReplicate);
                 return false;
             }
 
+            //获取掉队的fragment
             fragments = getUnderreplicatedFragments(lh, conf.getAuditorLedgerVerificationPercentage());
             if (fragments.size() == 0) {
+                //如果掉队的fragment没有了，那么久说明复制成功了，标记删除
                 LOG.info("Ledger replicated successfully. ledger id is: " + ledgerIdToReplicate);
                 underreplicationManager.markLedgerReplicated(ledgerIdToReplicate);
                 return true;
             } else {
                 deferLedgerLockRelease = true;
+                //否则释放锁
                 deferLedgerLockReleaseOfFailedLedger(ledgerIdToReplicate);
                 numDeferLedgerLockReleaseOfFailedLedger.inc();
+                // 释放 underReplication 账本锁并再次竞争复制以获取挂起的碎片
                 // Releasing the underReplication ledger lock and compete
                 // for the replication again for the pending fragments
                 return false;
@@ -434,6 +472,7 @@ public class ReplicationWorker implements Runnable {
             logBKExceptionAndReleaseLedger(e, ledgerIdToReplicate);
             return false;
         } finally {
+            // 我们确保我们总是释放复制不足的锁，除非我们决定推迟它。 如果锁已经被释放，这是一个空操作
             // we make sure we always release the underreplicated lock, unless we decided to defer it. If the lock has
             // already been released, this is a no-op
             if (!deferLedgerLockRelease) {
@@ -450,6 +489,13 @@ public class ReplicationWorker implements Runnable {
 
 
     /**
+     * 在检查分类账的碎片时，有一个角落案例
+     * 如果最后一个段/集合是打开的，但集合中的某些法定人数没有写入任何内容，则博彩公司可能会失败而不采取任何行动。这很好，直到足够多的博彩公司未能导致法定人数变得不可用，届时分类帐将无法恢复。
+     * 例如，如果在 E3Q2 中，只写入了 1 个条目，并且集成中的最后一个 bookie 失败，则没有写入任何内容，因此不需要恢复任何内容。但是，如果倒数第二个博彩公司失败，
+     * 我们现在已经失去了第二个条目的法定人数，因此无法查看第二个条目是否已写入。 为了避免这种情况，我们需要检查最终开放集合中的博彩公司是否不可用，如果是，则采取行动。要采取的行动是关闭分类帐，
+     * 在宽限期之后，写作客户可能会自行更换有问题的博彩公司。
+     * 在封闭的分类账中缺少博彩公司是可以的，因为我们知道最后确认的添加，所以我们可以判断哪些条目应该存在，并在必要时重新复制它们。
+     *
      * When checking the fragments of a ledger, there is a corner case
      * where if the last segment/ensemble is open, but nothing has been written to
      * some of the quorums in the ensemble, bookies can fail without any action being
@@ -471,16 +517,21 @@ public class ReplicationWorker implements Runnable {
      * we can tell which entries are supposed to exist and rereplicate them if necessary.
      */
     private boolean isLastSegmentOpenAndMissingBookies(LedgerHandle lh) throws BKException {
+        //如果leadger已经关闭，那么久返回false
         LedgerMetadata md = admin.getLedgerMetadata(lh);
         if (md.isClosed()) {
             return false;
         }
 
+        //获取该ledger的ensemble
         SortedMap<Long, ? extends List<BookieId>> ensembles = admin.getLedgerMetadata(lh).getAllEnsembles();
+        //获取最后的key所在的ensemble
         List<BookieId> finalEnsemble = ensembles.get(ensembles.lastKey());
+        //获取可获得的bookie
         Collection<BookieId> available = admin.getAvailableBookies();
         for (BookieId b : finalEnsemble) {
             if (!available.contains(b)) {
+                //如果不包含，那么就说明是miss了
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Bookie {} is missing from the list of Available Bookies. ledger {}:ensemble {}.",
                             b, lh.getId(), finalEnsemble);
@@ -601,6 +652,7 @@ public class ReplicationWorker implements Runnable {
                 "ReplicationWorker failed to replicate Ledger : {} for {} number of times, "
                 + "so deferring the ledger lock release by {} msecs",
                 ledgerId, numOfTimesFailedSoFar, delayOfLedgerLockReleaseInMSecs);
+        //构建一个释放锁任务
         TimerTask timerTask = new TimerTask() {
             @Override
             public void run() {

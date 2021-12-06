@@ -173,6 +173,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
     private void checkLayout()
             throws KeeperException, InterruptedException, ReplicationException.CompatibilityException {
         List<ACL> zkAcls = ZkUtils.getACLs(conf);
+        //判断underreplication路径是否存在，不存在就创建
         if (zkc.exists(basePath, false) == null) {
             try {
                 zkc.create(basePath, new byte[0], zkAcls, CreateMode.PERSISTENT);
@@ -292,6 +293,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
         }
     }
 
+    //标记under replica的leader，把under replica的leader写到zk上
     @Override
     public CompletableFuture<Void> markLedgerUnderreplicatedAsync(long ledgerId, Collection<String> missingReplicas) {
         if (LOG.isDebugEnabled()) {
@@ -328,7 +330,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
             }, null);
     }
 
-
+    //处理已经标记的under replica
     private void handleLedgerUnderreplicatedAlreadyMarked(final String znode,
                                                           final Collection<String> missingReplicas,
                                                           final List<ACL> zkAcls,
@@ -504,6 +506,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
         if (depth == 4) {
             List<String> children;
             try {
+                //获取children
                 children = subTreeCache.getChildren(parent);
             } catch (KeeperException.NoNodeException nne) {
                 // can occur if another underreplicated ledger's
@@ -516,25 +519,31 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
             while (children.size() > 0) {
                 String tryChild = children.get(0);
                 try {
+                    //这里会去查看对应的锁目录，类似： /bookie_test_cluster1/ledgers/underreplication/locks/urL0000003414，一个leader同时只能有一个bookie负责replica复制
                     List<String> locks = subTreeCache.getChildren(urLockPath);
                     if (locks.contains(tryChild)) {
                         children.remove(tryChild);
                         continue;
                     }
 
+                    //如果该leadgerr还未被复制
                     Stat stat = zkc.exists(parent + "/" + tryChild, false);
                     if (stat == null) {
+                        //不存在就直接返回
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("{}/{} doesn't exist", parent, tryChild);
                         }
                         children.remove(tryChild);
                         continue;
                     }
-
+                    //先标记该leadger是当前bookie节点处理，如果已经存在该目录就会抛异常
                     String lockPath = urLockPath + "/" + tryChild;
+                    //这里通过模式匹配/bookie_test_cluster1/ledgers/underreplication/ledgers/0000/0000/0000/0584这种来获取ledger id
                     long ledgerId = getLedgerId(tryChild);
                     zkc.create(lockPath, LOCK_DATA, zkAcls, CreateMode.EPHEMERAL);
+                    //放入持有锁的目录中
                     heldLocks.put(ledgerId, new Lock(lockPath, Optional.of(stat.getVersion())));
+                    //也就是说这个leadgerId是模式匹配zk路径来获取的：/bookie_test_cluster1/ledgers/underreplication/ledgers/0000/0000/0000/0584
                     return ledgerId;
                 } catch (KeeperException.NodeExistsException nee) {
                     children.remove(tryChild);
@@ -559,8 +568,10 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
         while (children.size() > 0) {
             String tryChild = children.get(0);
             String tryPath = parent + "/" + tryChild;
+            //递归调用，直到递归4层
             long ledger = getLedgerToRereplicateFromHierarchy(tryPath, depth + 1);
             if (ledger != -1) {
+                //获取到就返回
                 return ledger;
             }
             children.remove(tryChild);
@@ -600,8 +611,10 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
             };
             try (SubTreeCache.WatchGuard wg = subTreeCache.registerWatcherWithGuard(w)) {
                 waitIfLedgerReplicationDisabled();
+                //获取ledger
                 long ledger = getLedgerToRereplicateFromHierarchy(urLedgerPath, 0);
                 if (ledger != -1) {
+                    //获取到就返回
                     return ledger;
                 }
                 // nothing found, wait for a watcher to trigger
