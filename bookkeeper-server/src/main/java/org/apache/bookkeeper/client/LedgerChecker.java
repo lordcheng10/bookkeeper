@@ -327,14 +327,19 @@ public class LedgerChecker {
         checkLedger(lh, cb, 0L);
     }
 
+    //lh：leadger处理handle
+    //cb:是回调
+    //percentageOfLedgerFragmentToBeVerified：需要校验的百分比
     public void checkLedger(final LedgerHandle lh,
                             final GenericCallback<Set<LedgerFragment>> cb,
                             long percentageOfLedgerFragmentToBeVerified) {
+        // 构建要复制的fragment集合
         // build a set of all fragment replicas
         final Set<LedgerFragment> fragments = new HashSet<LedgerFragment>();
 
         Long curEntryId = null;
         List<BookieId> curEnsemble = null;
+        //获取该ledger的metadata，并从中获取ensemble，遍历所有的ensemble
         for (Map.Entry<Long, ? extends List<BookieId>> e : lh
                 .getLedgerMetadata().getAllEnsembles().entrySet()) {
             if (curEntryId != null) {

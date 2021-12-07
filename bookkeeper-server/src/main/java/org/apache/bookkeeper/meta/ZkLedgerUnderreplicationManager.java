@@ -520,6 +520,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
                 String tryChild = children.get(0);
                 try {
                     //这里会去查看对应的锁目录，类似： /bookie_test_cluster1/ledgers/underreplication/locks/urL0000003414，一个leader同时只能有一个bookie负责replica复制
+                    //这里会把urLockPath加入到subTreeCache路径缓存中，然后一旦用subTreeCache进行watch后，就会watch缓存中的所有路径
                     List<String> locks = subTreeCache.getChildren(urLockPath);
                     if (locks.contains(tryChild)) {
                         children.remove(tryChild);
@@ -540,6 +541,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
                     String lockPath = urLockPath + "/" + tryChild;
                     //这里通过模式匹配/bookie_test_cluster1/ledgers/underreplication/ledgers/0000/0000/0000/0584这种来获取ledger id
                     long ledgerId = getLedgerId(tryChild);
+                    //抢占锁
                     zkc.create(lockPath, LOCK_DATA, zkAcls, CreateMode.EPHEMERAL);
                     //放入持有锁的目录中
                     heldLocks.put(ledgerId, new Lock(lockPath, Optional.of(stat.getVersion())));
@@ -601,6 +603,7 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
             LOG.debug("getLedgerToRereplicate()");
         }
         while (true) {
+            //使用信号量来等待抢锁成功
             final CountDownLatch changedLatch = new CountDownLatch(1);
             Watcher w = new Watcher() {
                 @Override
@@ -609,7 +612,9 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
                     changedLatch.countDown();
                 }
             };
+            //这里先往subTreeCache中注册监听，然后在getLedgerToRereplicateFromHierarchy方法中会访问锁路径，从而在锁路径变更时候，就会触发watcher操作
             try (SubTreeCache.WatchGuard wg = subTreeCache.registerWatcherWithGuard(w)) {
+                //这里是干嘛的
                 waitIfLedgerReplicationDisabled();
                 //获取ledger
                 long ledger = getLedgerToRereplicateFromHierarchy(urLedgerPath, 0);
@@ -617,6 +622,8 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
                     //获取到就返回
                     return ledger;
                 }
+                //使用信号量来等待抢锁成功,奇怪了 抢占锁也不是异步的啊 ，怎么就要在这里等啊，执行到这里肯定强索成功了啊？
+                //喔，对了，走到这里肯定是没抢到锁，否则就直接返回了，没抢到锁，就以为着，没抢到要复制的leadeger，那么这里就通过信号量来等待，直到锁目录变更或者掉队目录变更，这就意味着可能掉队的leadger又有了，所以可以再继续去抢leadger了
                 // nothing found, wait for a watcher to trigger
                 changedLatch.await();
             } catch (KeeperException ke) {
