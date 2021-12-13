@@ -20,6 +20,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stats.StatsProvider;
 
 /**
+ * JMX来实现的metric提供器
  * A {@link StatsProvider} implemented based on <i>Codahale</i> metrics library.
  */
 @SuppressWarnings("deprecation")

@@ -21,29 +21,34 @@ package org.apache.bookkeeper.common.component;
 import java.lang.Thread.UncaughtExceptionHandler;
 
 /**
+ * 基于生命周期管理的组件。
  * A component based on lifecycle management.
  */
 public interface LifecycleComponent extends AutoCloseable {
-
+    // 返回组件名字
     String getName();
-
+    // 获取组件生命周期状态
     Lifecycle.State lifecycleState();
-
+    // 添加到生命周期中的listener
     void addLifecycleListener(LifecycleListener listener);
 
+    // 移除listener
     void removeLifecycleListener(LifecycleListener listener);
 
+    // 发布信息
     default void publishInfo(ComponentInfoPublisher componentInfoPublisher) {
     }
-
+    // 启动
     void start();
-
+    // 停止
     void stop();
 
+    // 关闭
     @Override
     void close();
 
     /**
+     * 设置生命周期组件由于未捕获的异常而突然终止时调用的默认处理程序。
      * Set the default handler invoked when a lifecycle component
      * abruptly terminates due an uncaught exception.
      *

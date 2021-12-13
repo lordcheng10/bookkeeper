@@ -99,6 +99,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Bookkeeper客户端。
+ *   我们假设在任何时候都有一个账本的作者。
+ *   有四种可能的操作：开始一个新的账本，写入一个账本，读取一个账本和删除一个账本。
+ * 同步调用导致的异常和异步调用导致的错误代码可以在 {@link BKException} 类中找到。
+ *
  * BookKeeper client.
  *
  * <p>We assume there is one single writer to a ledger at any time.

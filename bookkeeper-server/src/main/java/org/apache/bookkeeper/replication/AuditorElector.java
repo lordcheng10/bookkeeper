@@ -43,6 +43,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 使用 Apache ZooKeeper 执行审计员选举。 使用 ZooKeeper 作为协调服务，当博彩公司竞标审计员时，
+ * 它会在 ZooKeeper 上创建一个临时序列文件（znode）并被视为他们的投票。 投票格式为“V_sequencenumber”。
+ * 选举将通过比较临时序列号来完成，创建最少 znode 的博彩公司将被选为审计员。
+ * 所有其他博彩公司将根据临时序列号在其前任 znode 上观看。
+ *
  * Performing auditor election using Apache ZooKeeper. Using ZooKeeper as a
  * coordination service, when a bookie bids for auditor, it creates an ephemeral
  * sequential file (znode) on ZooKeeper and considered as their vote. Vote
@@ -181,8 +186,10 @@ public class AuditorElector {
                         return;
                     }
                     try {
+                        //选举成为auditor，如果选举后，当前节点没有选上，那么会卡在这行代码，直到前一个bookie节点把自己的选票目录删除
+                        //如果选举成功才会走到下一行代码，或者抛异常就直接走到catch里
                         ledgerAuditorManager.tryToBecomeAuditor(bookieId, e -> handleAuditorEvent(e));
-
+                        // 如果选举为了auditor审计员，那么就会启动对应的服务
                         auditor = new Auditor(bookieId, conf, bkc, false, statsLogger);
                         auditor.start();
                     } catch (InterruptedException e) {

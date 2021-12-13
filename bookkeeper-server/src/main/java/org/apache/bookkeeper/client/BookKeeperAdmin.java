@@ -91,6 +91,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * BookKeeper 集群的管理客户端。
  * Admin client for BookKeeper clusters.
  */
 public class BookKeeperAdmin implements AutoCloseable {

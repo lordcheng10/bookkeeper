@@ -59,6 +59,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 用于启动/停止 AutoRecovery 守护进程 Auditor 和 ReplicationWorker 的类。
  * Class to start/stop the AutoRecovery daemons Auditor and ReplicationWorker.
  *
  * <p>TODO: eliminate the direct usage of zookeeper here {@link https://github.com/apache/bookkeeper/issues/1332}
@@ -96,17 +97,20 @@ public class AutoRecoveryMain {
             shutdown(ExitCode.ZK_EXPIRED);
         });
 
+        //auditor审计选举器
         auditorElector = new AuditorElector(
             BookieImpl.getBookieId(conf).toString(),
             conf,
             bkc,
             statsLogger.scope(AUDITOR_SCOPE),
             false);
+        //实际复制器
         replicationWorker = new ReplicationWorker(
             conf,
             bkc,
             false,
             statsLogger.scope(REPLICATION_WORKER_SCOPE));
+        //autorecovery挂掉监听器:上面两个有一个不在运行，都会导致整个进程退出
         deathWatcher = new AutoRecoveryDeathWatcher(this);
     }
 
@@ -114,11 +118,15 @@ public class AutoRecoveryMain {
      * Start daemons
      */
     public void start() {
+        //审计员选举人：选出的auditor有点类似kafka里面的controller，他会监听挂掉的bookie或和zk断链的bookie，
+        //然后将上面的leader写入zk目录中，然后再由下面的replicaworker来负责复制恢复数据
         auditorElector.start();
+        // 复制工作者,这个有点像是
         replicationWorker.start();
         if (null != uncaughtExceptionHandler) {
             deathWatcher.setUncaughtExceptionHandler(uncaughtExceptionHandler);
         }
+        // 自动恢复死亡观察者
         deathWatcher.start();
         running = true;
     }
@@ -190,7 +198,8 @@ public class AutoRecoveryMain {
         return running;
     }
 
-    /*
+    /**
+     * 用于自动恢复守护进程的 DeathWatcher。
      * DeathWatcher for AutoRecovery daemons.
      */
     private class AutoRecoveryDeathWatcher extends BookieCriticalThread {
@@ -219,6 +228,7 @@ public class AutoRecoveryMain {
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
+                // 如果auditorElector或者replicationWorker有任何一个停止运行了，那么都会抛异常，然后导致整个bookie进程退出，因为该类是继承自BookieCriticalThread
                 // If any one service not running, then shutdown peer.
                 if (!autoRecoveryMain.auditorElector.isRunning() || !autoRecoveryMain.replicationWorker.isRunning()) {
                     LOG.info(

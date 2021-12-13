@@ -31,7 +31,7 @@ import org.apache.bookkeeper.stats.StatsProvider;
 public class StatsProviderService extends ServerLifecycleComponent {
 
     public static final String NAME = "stats-provider";
-
+    // 状态提供器，实际就是metric收集器,默认是promethus 提供器
     private final StatsProvider statsProvider;
 
     public StatsProviderService(BookieConfiguration conf) throws Exception {

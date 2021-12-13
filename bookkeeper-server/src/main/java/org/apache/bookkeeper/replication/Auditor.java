@@ -119,6 +119,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Auditor 是整个 Bookie 集群中的一个实体，它将监视“ledgerrootpath/available”zkpath 下的所有 Bookie。
+ * 当任何 bookie 出现故障或与 zk 断开连接时，他将通过将故障 bookie 的所有相应分类帐作为未充分复制的 znode
+ * 保留在 zk 中来开始启动重新复制活动。
+ * 从 Auditor/ReplicationWorker 中删除直接使用 zookeeper。
+ *
  * Auditor is a single entity in the entire Bookie cluster and will be watching
  * all the bookies under 'ledgerrootpath/available' zkpath. When any of the
  * bookie failed or disconnected from zk, he will start initiating the
@@ -133,39 +138,73 @@ import org.slf4j.LoggerFactory;
 )
 public class Auditor implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(Auditor.class);
+    // 最大并发副本检查分类帐请求
     private static final int MAX_CONCURRENT_REPLICAS_CHECK_LEDGER_REQUESTS = 100;
+    // replica 超时检查时间，默认2分钟
     private static final int REPLICAS_CHECK_TIMEOUT_IN_SECS = 120;
+    // 空BitSet集合,一个Bitset类创建一种特殊类型的数组来保存位值。BitSet中数组大小会随需要增加。这和位向量（vector of bits）比较类似。
     private static final BitSet EMPTY_BITSET = new BitSet();
+    // 外面传入的bookie config
     private final ServerConfiguration conf;
+    // bookkeeper客户端
     private final BookKeeper bkc;
+    // 是否是本类创建的客户端，只有是自己创建的bookkeeper客户端才可以被自己关闭，如果是外面传进来的，那么可能在外面就被关闭了
     private final boolean ownBkc;
+    // BookKeeper 集群的管理客户端。
     private final BookKeeperAdmin admin;
+    // 是否属于当前类的客户端
     private final boolean ownAdmin;
+    // bookie ledger index
     private BookieLedgerIndexer bookieLedgerIndexer;
+    // ledger管理客户端
     private LedgerManager ledgerManager;
+    // 分类帐复制掉队副本管理器
     private LedgerUnderreplicationManager ledgerUnderreplicationManager;
+    // 单线程线程池
     private final ScheduledExecutorService executor;
+    // 本地缓存的bookie节点，用来和zk上读取的bookie节点进行对比，从而发现是否有挂掉或者新增的节点
     private List<String> knownBookies = new ArrayList<String>();
+    // bookie标识符
     private final String bookieIdentifier;
+    // audit任务完成情况
     private volatile Future<?> auditTask;
+    // 需要audit审计的bookie,比如挂掉或与zk断链的节点
     private Set<String> bookiesToBeAudited = Sets.newHashSet();
+    // lostBookie 需要delay多久,该值在zookeeper上有保存，这里只是在本地缓存下
     private volatile int lostBookieRecoveryDelayBeforeChange;
+    // 分类帐不遵守安置政策GuageValue
     private final AtomicInteger ledgersNotAdheringToPlacementPolicyGuageValue;
+    // 发现不遵守放置政策检查的分类帐数量
     private final AtomicInteger numOfLedgersFoundNotAdheringInPlacementPolicyCheck;
+    // 分类帐稍微地遵守安置政策 GuageValue
     private final AtomicInteger ledgersSoftlyAdheringToPlacementPolicyGuageValue;
+    // 发现稍微遵守放置政策检查的分类帐数量
     private final AtomicInteger numOfLedgersFoundSoftlyAdheringInPlacementPolicyCheck;
+    // 在安置政策检查中审计的已关闭分类帐的数量
     private final AtomicInteger numOfClosedLedgersAuditedInPlacementPolicyCheck;
+    // 已用账本数量 恢复宽限期 计量值
     private final AtomicInteger numOfURLedgersElapsedRecoveryGracePeriodGuageValue;
+    // 已用账本数量 恢复宽限期
     private final AtomicInteger numOfURLedgersElapsedRecoveryGracePeriod;
+    // 没有条目副本的ledger数量计量值
     private final AtomicInteger numLedgersHavingNoReplicaOfAnEntryGuageValue;
+    // 没有条目副本的ledger数量
     private final AtomicInteger numLedgersFoundHavingNoReplicaOfAnEntry;
+    // 有数量少于 AQ 副本的条目的ledger数量 计量值
     private final AtomicInteger numLedgersHavingLessThanAQReplicasOfAnEntryGuageValue;
+    // 有数量少于 AQ 副本的条目的ledger数量
     private final AtomicInteger numLedgersFoundHavingLessThanAQReplicasOfAnEntry;
+    // 有数量少于 WQ 副本的条目的ledger数量 计量值
     private final AtomicInteger numLedgersHavingLessThanWQReplicasOfAnEntryGuageValue;
+    // 有数量少于 WQ 副本的条目的ledger数量
     private final AtomicInteger numLedgersFoundHavingLessThanWQReplicasOfAnEntry;
+    // 复制掉队副本间隔周期
     private final long underreplicatedLedgerRecoveryGracePeriod;
+    // zookeeper超时时间
     private final int zkOpTimeoutMs;
+    // 打开分类帐无恢复信号量
     private final Semaphore openLedgerNoRecoverySemaphore;
+    // 打开分类帐无恢复信号量等待超时时间
     private final int openLedgerNoRecoverySemaphoreWaitTimeoutMSec;
 
     private final StatsLogger statsLogger;
@@ -173,27 +212,32 @@ public class Auditor implements AutoCloseable {
         name = NUM_UNDER_REPLICATED_LEDGERS,
         help = "the distribution of num under_replicated ledgers on each auditor run"
     )
+    //在每个auditor上跑的掉队的replica的ledger数量
     private final OpStatsLogger numUnderReplicatedLedger;
 
     @StatsDoc(
             name = UNDER_REPLICATED_LEDGERS_TOTAL_SIZE,
             help = "the distribution of under_replicated ledgers total size on each auditor run"
     )
+    //在每个auditor上跑的掉队的replica的ledger总size
     private final OpStatsLogger underReplicatedLedgerTotalSize;
     @StatsDoc(
         name = URL_PUBLISH_TIME_FOR_LOST_BOOKIE,
         help = "the latency distribution of publishing under replicated ledgers for lost bookies"
     )
+    // 当bookie挂掉或与zk断链时，需要将对应的ledger写入zookeeper中，并做一些其他操作，这些所需要消耗的时间
     private final OpStatsLogger uRLPublishTimeForLostBookies;
     @StatsDoc(
         name = BOOKIE_TO_LEDGERS_MAP_CREATION_TIME,
         help = "the latency distribution of creating bookies-to-ledgers map"
     )
+    // 创建 bookies-to-ledgers 映射的延迟分布
     private final OpStatsLogger bookieToLedgersMapCreationTime;
     @StatsDoc(
         name = CHECK_ALL_LEDGERS_TIME,
         help = "the latency distribution of checking all ledgers"
     )
+    // 检查所有账本的延迟分布
     private final OpStatsLogger checkAllLedgersTime;
     @StatsDoc(
             name = PLACEMENT_POLICY_CHECK_TIME,
@@ -204,68 +248,81 @@ public class Auditor implements AutoCloseable {
             name = REPLICAS_CHECK_TIME,
             help = "the latency distribution of replicas check"
         )
+    // 副本的延迟分布检查
     private final OpStatsLogger replicasCheckTime;
     @StatsDoc(
         name = AUDIT_BOOKIES_TIME,
         help = "the latency distribution of auditing all the bookies"
     )
+    // 审计所有博彩公司的延迟分布
     private final OpStatsLogger auditBookiesTime;
     @StatsDoc(
         name = NUM_LEDGERS_CHECKED,
         help = "the number of ledgers checked by the auditor"
     )
+    // 审计师检查的分类账数量
     private final Counter numLedgersChecked;
     @StatsDoc(
         name = NUM_FRAGMENTS_PER_LEDGER,
         help = "the distribution of number of fragments per ledger"
     )
+    // 每个账本的碎片数量分布,看起来是把所有的ledger锁包含的fragment统计起来
     private final OpStatsLogger numFragmentsPerLedger;
     @StatsDoc(
         name = NUM_BOOKIES_PER_LEDGER,
         help = "the distribution of number of bookies per ledger"
     )
+    // 每个分类账的博彩公司数量分布,这个其实也是bookie维度，不是ledger维度
     private final OpStatsLogger numBookiesPerLedger;
     @StatsDoc(
         name = NUM_BOOKIE_AUDITS_DELAYED,
         help = "the number of bookie-audits delayed"
     )
+    // 博彩公司审核延迟的次数
     private final Counter numBookieAuditsDelayed;
     @StatsDoc(
         name = NUM_DELAYED_BOOKIE_AUDITS_DELAYES_CANCELLED,
         help = "the number of delayed-bookie-audits cancelled"
     )
+    // 延迟审计的取消次数
     private final Counter numDelayedBookieAuditsCancelled;
     @StatsDoc(
             name = NUM_LEDGERS_NOT_ADHERING_TO_PLACEMENT_POLICY,
             help = "Gauge for number of ledgers not adhering to placement policy found in placement policy check"
     )
+    // 没有遵循放置策略的ledger数
     private final Gauge<Integer> numLedgersNotAdheringToPlacementPolicy;
     @StatsDoc(
             name = NUM_LEDGERS_SOFTLY_ADHERING_TO_PLACEMENT_POLICY,
             help = "Gauge for number of ledgers softly adhering to placement policy found in placement policy check"
     )
+    // 稍微遵循放置策略的ledger数
     private final Gauge<Integer> numLedgersSoftlyAdheringToPlacementPolicy;
     @StatsDoc(
             name = NUM_UNDERREPLICATED_LEDGERS_ELAPSED_RECOVERY_GRACE_PERIOD,
             help = "Gauge for number of underreplicated ledgers elapsed recovery grace period"
     )
+    // 恢复周期内的掉队副本数
     private final Gauge<Integer> numUnderreplicatedLedgersElapsedRecoveryGracePeriod;
     @StatsDoc(
             name = NUM_LEDGERS_HAVING_NO_REPLICA_OF_AN_ENTRY,
             help = "Gauge for number of ledgers having an entry with all the replicas missing"
     )
+    // 存在没有副本的entry ledger数
     private final Gauge<Integer> numLedgersHavingNoReplicaOfAnEntry;
     @StatsDoc(
             name = NUM_LEDGERS_HAVING_LESS_THAN_AQ_REPLICAS_OF_AN_ENTRY,
             help = "Gauge for number of ledgers having an entry with less than AQ number of replicas"
                     + ", this doesn't include ledgers counted towards numLedgersHavingNoReplicaOfAnEntry"
     )
+    // 存在副本数小于AQ的ledger数
     private final Gauge<Integer> numLedgersHavingLessThanAQReplicasOfAnEntry;
     @StatsDoc(
             name = NUM_LEDGERS_HAVING_LESS_THAN_WQ_REPLICAS_OF_AN_ENTRY,
             help = "Gauge for number of ledgers having an entry with less than WQ number of replicas"
                     + ", this doesn't include ledgers counted towards numLedgersHavingLessThanAQReplicasOfAnEntry"
     )
+    // 存在副本数小于WQ的ledger数
     private final Gauge<Integer> numLedgersHavingLessThanWQReplicasOfAnEntry;
 
     static BookKeeper createBookKeeperClient(ServerConfiguration conf) throws InterruptedException, IOException {
@@ -465,6 +522,7 @@ public class Auditor implements AutoCloseable {
         this.ownBkc = ownBkc;
         this.admin = admin;
         this.ownAdmin = ownAdmin;
+        //初始化
         initialize(conf, bkc);
 
         executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
@@ -480,13 +538,16 @@ public class Auditor implements AutoCloseable {
     private void initialize(ServerConfiguration conf, BookKeeper bkc)
             throws UnavailableException {
         try {
+            // ledger 管理构造工厂
             LedgerManagerFactory ledgerManagerFactory = AbstractZkLedgerManagerFactory
                     .newLedgerManagerFactory(
                         conf,
                         bkc.getMetadataClientDriver().getLayoutManager());
+            // ledger管理器
             ledgerManager = ledgerManagerFactory.newLedgerManager();
+            // bookie ledger index
             this.bookieLedgerIndexer = new BookieLedgerIndexer(ledgerManager);
-
+            // 掉队副本ledger管理器
             this.ledgerUnderreplicationManager = ledgerManagerFactory
                     .newLedgerUnderreplicationManager();
             LOG.info("AuthProvider used by the Auditor is {}",
@@ -499,6 +560,7 @@ public class Auditor implements AutoCloseable {
                 LOG.info("Valid lostBookieRecoveryDelay zNode is available, so not creating "
                         + "lostBookieRecoveryDelay zNode as part of Auditor initialization ");
             }
+            //在变更前lost bookie recory的delay时间
             lostBookieRecoveryDelayBeforeChange = this.ledgerUnderreplicationManager.getLostBookieRecoveryDelay();
         } catch (CompatibilityException ce) {
             throw new UnavailableException(
@@ -532,6 +594,7 @@ public class Auditor implements AutoCloseable {
         }
     }
 
+    // 检查zookeeper上的bookie节点是否新增或减少
     @VisibleForTesting
     synchronized Future<?> submitAuditTask() {
         if (executor.isShutdown()) {
@@ -544,18 +607,28 @@ public class Auditor implements AutoCloseable {
                 @SuppressWarnings("unchecked")
                 public void run() {
                     try {
+                        //如果在zookeeper上写了对应的disable目录，那么这里回一直等待，知道该目录删除掉
                         waitIfLedgerReplicationDisabled();
                         int lostBookieRecoveryDelay = Auditor.this.ledgerUnderreplicationManager
                                 .getLostBookieRecoveryDelay();
+                        // 这个目录下/bookie_nj_seconion/ledgers/available下的所有bookie节点和/bookie_nj_seconion/ledgers/available/readonly 下的节点加起来
                         List<String> availableBookies = getAvailableBookies();
 
+                        //转换为字符串，因为 knownBookies 和 availableBookies 仅包含字符串值查找新的 bookies（如果有）并更新已知的 bookie 列表
+                        // 首先用zk上记录的bookie-本地缓存的bookie列表，从而得到新增的bookie节点列表newBookies
                         // casting to String, as knownBookies and availableBookies
                         // contains only String values
                         // find new bookies(if any) and update the known bookie list
                         Collection<String> newBookies = CollectionUtils.subtract(
                                 availableBookies, knownBookies);
+                        //将新增节点加入到本地缓存中，如果缩容后的节点也会在knownBookies中一直存在，他应该是缓存了历史所有在线过的bookie节点
                         knownBookies.addAll(newBookies);
                         if (!bookiesToBeAudited.isEmpty() && knownBookies.containsAll(bookiesToBeAudited)) {
+                            /**
+                             * 较早前倒闭并计划进行审计的博彩公司，
+                             * 上来了。 所以让我们停止跟踪它并取消审计。
+                             * 由于我们允许在只有一个失败的 bookie 时延迟审计，所以 bookiesToBeAudited 应该只有 1 个元素，因此 containsAll 检查应该没问题
+                             * */
                             // the bookie, which went down earlier and had an audit scheduled for,
                             // has come up. So let us stop tracking it and cancel the audit. Since
                             // we allow delaying of audit when there is only one failed bookie,
@@ -567,33 +640,39 @@ public class Auditor implements AutoCloseable {
                             }
                             bookiesToBeAudited.clear();
                         }
-
+                        // 用knownBookies-availableBookies来获取掉线的bookie，加入到bookiesToBeAudited中
                         // find lost bookies(if any)
                         bookiesToBeAudited.addAll(CollectionUtils.subtract(knownBookies, availableBookies));
                         if (bookiesToBeAudited.size() == 0) {
+                            //如果掉线的bookie没有，那么久直接返回
                             return;
                         }
-
+                        //然后这里回移除要审计的节点，
                         knownBookies.removeAll(bookiesToBeAudited);
+                        // 如果不需要delay，那么就直接开启audit，然后清楚掉bookiesToBeAudited
                         if (lostBookieRecoveryDelay == 0) {
                             startAudit(false);
                             bookiesToBeAudited.clear();
                             return;
                         }
+                        //如果有delay，那么才看挂掉的bookie节点数是否大于1，大于那么久直接执行
                         if (bookiesToBeAudited.size() > 1) {
                             // if more than one bookie is down, start the audit immediately;
                             LOG.info("Multiple bookie failure; not delaying bookie audit. "
                                     + "Bookies lost now: {}; All lost bookies: {}",
                                     CollectionUtils.subtract(knownBookies, availableBookies),
                                     bookiesToBeAudited);
+                            //如果之前有audit，那么先取消之前的
                             if (auditTask != null && auditTask.cancel(false)) {
                                 auditTask = null;
                                 numDelayedBookieAuditsCancelled.inc();
                             }
+                            //开启audit
                             startAudit(false);
                             bookiesToBeAudited.clear();
                             return;
                         }
+                        //如果audit之前没有任务，那么才提交，并且delay提交执行，如果之前有的话就算了
                         if (auditTask == null) {
                             // if there is no scheduled audit, schedule one
                             auditTask = executor.schedule(safeRun(new Runnable() {
@@ -691,7 +770,9 @@ public class Auditor implements AutoCloseable {
             }
 
             try {
+                //注册bookie改变的watcher
                 watchBookieChanges();
+                //获取可获得的bookie,也就是从这个目录：/bookie_nj_seconion/ledgers/available读取所有的bookie节点，包括该目录下只读的bookie节点
                 knownBookies = getAvailableBookies();
             } catch (BKException bke) {
                 LOG.error("Couldn't get bookie list, so exiting", bke);
@@ -1054,7 +1135,9 @@ public class Auditor implements AutoCloseable {
     }
 
     private void watchBookieChanges() throws BKException {
+        //watch 可写bookie的改变，也就是watch这个目录：/bookie_nj_seconion/ledgers/available
         admin.watchWritableBookiesChanged(bookies -> submitAuditTask());
+        //watch 只读bookie的改变，也就是watch这个目录：/bookie_nj_seconion/ledgers/available/readonly
         admin.watchReadOnlyBookiesChanged(bookies -> submitAuditTask());
     }
 
@@ -1096,6 +1179,7 @@ public class Auditor implements AutoCloseable {
         // put exit cases here
         Map<String, Set<Long>> ledgerDetails = generateBookie2LedgersIndex();
         try {
+            //如果没有disable zk目录，那么就再次异步调用auditBookies方法，然后返回
             if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                 // has been disabled while we were generating the index
                 // discard this run, and schedule a new one
@@ -1108,7 +1192,9 @@ public class Auditor implements AutoCloseable {
             return;
         }
 
+        //否则就不存在disable
         List<String> availableBookies = getAvailableBookies();
+        //找出lost的bookie节点
         // find lost bookies
         Set<String> knownBookies = ledgerDetails.keySet();
         Collection<String> lostBookies = CollectionUtils.subtract(knownBookies,
@@ -1116,6 +1202,7 @@ public class Auditor implements AutoCloseable {
 
         bookieToLedgersMapCreationTime.registerSuccessfulEvent(stopwatch.elapsed(TimeUnit.MILLISECONDS),
                 TimeUnit.MILLISECONDS);
+        //丢失的bookie节点是否大于0
         if (lostBookies.size() > 0) {
             try {
                 FutureUtils.result(
@@ -1814,6 +1901,7 @@ public class Auditor implements AutoCloseable {
         ConcurrentHashMap<Long, MissingEntriesInfoOfLedger> ledgersWithUnavailableBookies =
                     new ConcurrentHashMap<Long, MissingEntriesInfoOfLedger>();
         LedgerRangeIterator ledgerRangeIterator = ledgerManager.getLedgerRanges(zkOpTimeoutMs);
+        //Semaphore:信号,最大并发的信号量最多100个
         final Semaphore maxConcurrentSemaphore = new Semaphore(MAX_CONCURRENT_REPLICAS_CHECK_LEDGER_REQUESTS);
         while (true) {
             LedgerRange ledgerRange = null;
@@ -1846,6 +1934,7 @@ public class Auditor implements AutoCloseable {
                     try {
                         super.processResult(rc, path, ctx);
                     } finally {
+                        //处理完后，释放掉
                         maxConcurrentSemaphore.release();
                     }
                 }
@@ -1853,6 +1942,7 @@ public class Auditor implements AutoCloseable {
             LOG.debug("Number of ledgers in the current LedgerRange : {}", numOfLedgersInRange);
             for (Long ledgerInRange : ledgersInRange) {
                 try {
+                    //尝试获取信号量，如果在超时时间内没有获取到，那么久会抛异常
                     if (!maxConcurrentSemaphore.tryAcquire(REPLICAS_CHECK_TIMEOUT_IN_SECS, TimeUnit.SECONDS)) {
                         LOG.error("Timedout ({} secs) while waiting for acquiring semaphore",
                                 REPLICAS_CHECK_TIMEOUT_IN_SECS);
@@ -1876,7 +1966,9 @@ public class Auditor implements AutoCloseable {
                                 mcbForThisLedgerRange, ledgersWithMissingEntries, ledgersWithUnavailableBookies));
             }
             try {
-                /*
+                /**
+                 * 如果 mcbForThisLedgerRange 没有在 REPLICAS_CHECK_TIMEOUT_IN_SECS 秒内回调，那么最好放弃进行副本检查，
+                 * 因为可能会出现问题并且不会阻止单线程审计执行程序线程。
                  * if mcbForThisLedgerRange is not calledback within
                  * REPLICAS_CHECK_TIMEOUT_IN_SECS secs then better give up
                  * doing replicascheck, since there could be an issue and
@@ -2028,6 +2120,7 @@ public class Auditor implements AutoCloseable {
                 admin.close();
             }
             if (ownBkc) {
+                //只有是自己创建的bookkeeper客户端才可以被自己关闭
                 bkc.close();
             }
         } catch (InterruptedException ie) {

@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.commons.configuration.Configuration;
 
 /**
+ * 只是缓存下metric
  * A {@code CachingStatsProvider} adds the caching functionality to an existing {@code StatsProvider}.
  *
  * <p>The stats provider will cache the stats objects created by the other {@code StatsProvider} to allow

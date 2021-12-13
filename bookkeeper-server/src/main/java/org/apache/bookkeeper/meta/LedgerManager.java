@@ -32,8 +32,9 @@ import org.apache.bookkeeper.versioning.Versioned;
 import org.apache.zookeeper.AsyncCallback;
 
 /**
+ * LedgerManager 负责客户端的账本管理。
  * LedgerManager takes responsibility of ledger management in client side.
- *
+ * 如何存储分类帐元数据（例如在 ZooKeeper 或其他键/值存储中）
  * <ul>
  * <li>How to store ledger meta (e.g. in ZooKeeper or other key/value store)
  * </ul>

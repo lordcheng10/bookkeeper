@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * JMX来实现的
  * A {@link StatsProvider} implemented based on <i>Codahale</i> metrics library.
  */
 @SuppressWarnings("deprecation")

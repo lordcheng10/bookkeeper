@@ -36,6 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 准备bookie与其相应的分类账。
+ * 这将始终在账本管理器中查找账本元数据并生成索引。
  * Preparing bookie vs its corresponding ledgers. This will always look up the
  * ledgermanager for ledger metadata and will generate indexes.
  */
@@ -49,6 +51,9 @@ public class BookieLedgerIndexer {
     }
 
     /**
+     * 通过读取每个 bookie 中的所有分类帐并解析其元数据，生成 bookie 与其分类帐映射。
+     * <bookieId,Set<ledgerId1,ledgerId2,....>>
+     *
      * Generating bookie vs its ledgers map by reading all the ledgers in each
      * bookie and parsing its metadata.
      *

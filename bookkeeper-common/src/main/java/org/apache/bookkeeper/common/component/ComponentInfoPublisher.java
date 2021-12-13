@@ -25,13 +25,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 
 /**
+ * 允许组件发布有关它实现的服务、它公开的端点以及其他对管理工具和客户端有用的信息的信息。
  * Allows a component to publish information about
  * the services it implements, the endpoints it exposes
  * and other useful information for management tools and client.
  */
 @Slf4j
 public class ComponentInfoPublisher {
-
+    //熟悉和端口
     private final Map<String, String> properties = new ConcurrentHashMap<>();
     private final Map<String, EndpointInfo> endpoints = new ConcurrentHashMap<>();
 

@@ -224,7 +224,9 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        //这里启动
         int retCode = doMain(args);
+        //退出错误码
         Runtime.getRuntime().exit(retCode);
     }
 
@@ -232,6 +234,7 @@ public class Main {
 
         ServerConfiguration conf;
 
+        // 解析传入的参数命令
         // 0. parse command line
         try {
             conf = parseCommandLine(args);
@@ -239,6 +242,7 @@ public class Main {
             return ExitCode.INVALID_CONF;
         }
 
+        // 构建组件堆栈：
         // 1. building the component stack:
         LifecycleComponent server;
         try {
@@ -248,6 +252,7 @@ public class Main {
             return ExitCode.SERVER_EXCEPTION;
         }
 
+        // 开启服务
         // 2. start the server
         try {
             ComponentStarter.startComponent(server).get();
@@ -287,6 +292,13 @@ public class Main {
     }
 
     /**
+     * 构建 bookie 服务器。
+     * 组件的顺序是：
+     *   - 统计提供者
+     *   - bookie服务器
+     *   - 自动恢复守护进程
+     *   - http服务
+     *
      * Build the bookie server.
      *
      * <p>The sequence of the components is:
@@ -302,16 +314,18 @@ public class Main {
      * @return lifecycle stack
      */
     public static LifecycleComponentStack buildBookieServer(BookieConfiguration conf) throws Exception {
-
+        // 组件信息发布者
         final ComponentInfoPublisher componentInfoPublisher = new ComponentInfoPublisher();
-
+        // componentInfoPublisher转BookieServiceInfo的函数方法变量
         final Supplier<BookieServiceInfo> bookieServiceInfoProvider =
                 () -> buildBookieServiceInfo(componentInfoPublisher);
+        // 服务构造器
         LifecycleComponentStack.Builder serverBuilder = LifecycleComponentStack
                 .newBuilder()
                 .withComponentInfoPublisher(componentInfoPublisher)
                 .withName("bookie-server");
 
+        // 构造状态提供器，默认是用promethus的
         // 1. build stats provider
         StatsProviderService statsProviderService =
             new StatsProviderService(conf);
@@ -319,19 +333,23 @@ public class Main {
         serverBuilder.addComponent(statsProviderService);
         log.info("Load lifecycle component : {}", StatsProviderService.class.getName());
 
+        // 构建metadata驱动器
         // 2. Build metadata driver
         MetadataBookieDriver metadataDriver = BookieResources.createMetadataDriver(
                 conf.getServerConf(), rootStatsLogger);
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("metadataDriver", metadataDriver));
+        //创建注册管理器
         RegistrationManager rm = metadataDriver.createRegistrationManager();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("registrationManager", rm));
 
+        //创建ledger管理
         // 3. Build ledger manager
         LedgerManagerFactory lmFactory = metadataDriver.getLedgerManagerFactory();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("lmFactory", lmFactory));
         LedgerManager ledgerManager = lmFactory.newLedgerManager();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("ledgerManager", ledgerManager));
 
+        //构建bookie
         // 4. Build bookie
         StatsLogger bookieStats = rootStatsLogger.scope(BOOKIE_SCOPE);
         DiskChecker diskChecker = BookieResources.createDiskChecker(conf.getServerConf());
@@ -345,11 +363,13 @@ public class Main {
 
         ByteBufAllocatorWithOomHandler allocator = BookieResources.createAllocator(conf.getServerConf());
 
+        // bookie 拥有存储的所有权，因此将其关闭
         // bookie takes ownership of storage, so shuts it down
         LedgerStorage storage = BookieResources.createLedgerStorage(
                 conf.getServerConf(), ledgerManager, ledgerDirsManager, indexDirsManager, bookieStats, allocator);
 
         Bookie bookie;
+        //如果设置的是只读bookie，那么久只构建只读bookie，否则就构建正常的bookie
         if (conf.getServerConf().isForceReadOnlyBookie()) {
             bookie = new ReadOnlyBookie(conf.getServerConf(), rm, storage,
                                         diskChecker,
@@ -364,6 +384,7 @@ public class Main {
                                     bookieServiceInfoProvider);
         }
 
+        // 构建bookie sever
         // 5. build bookie server
         BookieService bookieService =
             new BookieService(conf, bookie, rootStatsLogger, allocator);
@@ -371,13 +392,14 @@ public class Main {
         serverBuilder.addComponent(bookieService);
         log.info("Load lifecycle component : {}", BookieService.class.getName());
 
+        // 获取是否启用本地清理。
         if (conf.getServerConf().isLocalScrubEnabled()) {
             serverBuilder.addComponent(
                     new ScrubberService(
                             rootStatsLogger.scope(ScrubberStats.SCOPE),
                     conf, bookieService.getServer().getBookie().getLedgerStorage()));
         }
-
+        // 构建自动recovery
         // 6. build auto recovery
         if (conf.getServerConf().isAutoRecoveryDaemonEnabled()) {
             AutoRecoveryService autoRecoveryService =
@@ -386,7 +408,7 @@ public class Main {
             serverBuilder.addComponent(autoRecoveryService);
             log.info("Load lifecycle component : {}", AutoRecoveryService.class.getName());
         }
-
+        // 构建http service
         // 7. build http service
         if (conf.getServerConf().isHttpServerEnabled()) {
             BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()
@@ -400,7 +422,7 @@ public class Main {
             serverBuilder.addComponent(httpService);
             log.info("Load lifecycle component : {}", HttpService.class.getName());
         }
-
+        //构建额外的服务,这就为bookie提供了插件的功能
         // 8. build extra services
         String[] extraComponents = conf.getServerConf().getExtraServerComponents();
         if (null != extraComponents) {
@@ -423,6 +445,7 @@ public class Main {
             }
         }
 
+        //返回LifecycleComponentStack到外面去统一启动
         return serverBuilder.build();
     }
 

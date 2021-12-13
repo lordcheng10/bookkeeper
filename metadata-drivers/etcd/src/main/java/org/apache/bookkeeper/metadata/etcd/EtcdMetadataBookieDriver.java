@@ -24,6 +24,7 @@ import org.apache.bookkeeper.meta.exceptions.MetadataException;
 import org.apache.bookkeeper.stats.StatsLogger;
 
 /**
+ * etcd（读作et-see-dee）是一种开源的分布式统一键值存储，用于分布式系统或计算机集群的共享配置、服务发现和的调度协调。
  * Etcd based metadata bookie driver.
  */
 @Slf4j

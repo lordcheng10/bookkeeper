@@ -24,6 +24,7 @@ import org.apache.bookkeeper.meta.exceptions.MetadataException;
 import org.apache.bookkeeper.stats.StatsLogger;
 
 /**
+ * 管理 bookie 服务器所需的所有元数据管理器的驱动程序。
  * Driver to manage all the metadata managers required by a bookie server.
  */
 public interface MetadataBookieDriver extends AutoCloseable {

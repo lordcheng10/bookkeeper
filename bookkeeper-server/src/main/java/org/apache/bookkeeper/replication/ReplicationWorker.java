@@ -183,6 +183,7 @@ public class ReplicationWorker implements Runnable {
                 .newLedgerUnderreplicationManager();
         this.admin = new BookKeeperAdmin(bkc, statsLogger);
         this.ledgerChecker = new LedgerChecker(bkc);
+        //这里会把对应的ReplicationWorker任务放入BookieThread中去启动
         this.workerThread = new BookieThread(this, "ReplicationWorker");
         this.openLedgerRereplicationGracePeriod = conf
                 .getOpenLedgerRereplicationGracePeriod();

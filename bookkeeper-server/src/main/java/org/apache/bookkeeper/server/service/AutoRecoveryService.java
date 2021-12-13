@@ -27,6 +27,7 @@ import org.apache.bookkeeper.server.conf.BookieConfiguration;
 import org.apache.bookkeeper.stats.StatsLogger;
 
 /**
+ * 自动恢复
  * A {@link ServerLifecycleComponent} that runs autorecovery.
  */
 public class AutoRecoveryService extends ServerLifecycleComponent {
