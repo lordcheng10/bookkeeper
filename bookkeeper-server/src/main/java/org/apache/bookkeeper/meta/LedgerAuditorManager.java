@@ -22,19 +22,22 @@ import java.util.function.Consumer;
 import org.apache.bookkeeper.net.BookieId;
 
 /**
+ * 用于处理分类账审计员选择的接口。
  * Interface to handle the ledger auditor election.
  */
 public interface LedgerAuditorManager extends AutoCloseable {
 
     /**
+     * 可由LedgerAuditorManager触发的事件。
      * Events that can be triggered by the LedgerAuditorManager.
      */
     enum AuditorEvent {
-        SessionLost,
-        VoteWasDeleted,
+        SessionLost, //session断开
+        VoteWasDeleted, // 选票被删除
     }
 
     /**
+     * 试着成为auditor
      * Try to become the auditor. If there's already another auditor, it will wait until this
      * current instance has become the auditor.
      *
@@ -45,6 +48,7 @@ public interface LedgerAuditorManager extends AutoCloseable {
     void tryToBecomeAuditor(String bookieId, Consumer<AuditorEvent> listener) throws IOException, InterruptedException;
 
     /**
+     * 返回有关当前审计员的信息。
      * Return the information regarding the current auditor.
      * @return
      */

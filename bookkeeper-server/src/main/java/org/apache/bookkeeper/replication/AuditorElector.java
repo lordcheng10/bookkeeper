@@ -63,12 +63,17 @@ import org.slf4j.LoggerFactory;
 public class AuditorElector {
     private static final Logger LOG = LoggerFactory
             .getLogger(AuditorElector.class);
-
+    //当前的bookieId
     private final String bookieId;
+    //服务配置
     private final ServerConfiguration conf;
+    //bookkeeper客户端
     private final BookKeeper bkc;
+    // 是否是该bookkeeper客户端的主人，也就是说是否是在本类创建的该bookkeeper客户端，这里是为了让外面真正创建该bookkeeper客户端类对象的来关闭
     private final boolean ownBkc;
+    //线程池
     private final ExecutorService executor;
+    //
     private final LedgerAuditorManager ledgerAuditorManager;
 
     Auditor auditor;
@@ -143,8 +148,11 @@ public class AuditorElector {
             });
     }
 
+    // 这里是一切的开始
     public Future<?> start() {
+        //先设置running为true
         running.set(true);
+        //然后提交选举任务
         return submitElectionTask();
     }
 
@@ -155,10 +163,12 @@ public class AuditorElector {
         executor.submit(new Runnable() {
                 @Override
                 public void run() {
+                    //只允许一次，运行一次后running就为false了，然后再运行的话，这里就会直接return
                     if (!running.compareAndSet(true, false)) {
                         return;
                     }
 
+                    //关闭ledgerAuditorManager
                     try {
                         ledgerAuditorManager.close();
                     } catch (InterruptedException ie) {

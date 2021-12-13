@@ -50,8 +50,11 @@ public interface LedgerUnderreplicationManager extends AutoCloseable {
     boolean isLedgerBeingReplicated(long ledgerId) throws ReplicationException;
 
     /**
+     * 将账本标记为缺少赌注的复制不足。然后，复制应检查哪些碎片复制不足，并重新复制它们。
      * Mark a ledger as underreplicated with missing bookies. The replication should then
      * check which fragements are underreplicated and rereplicate them.
+     *
+     * 注意这里的missingReplicas 其实就是missingBookie 记录了掉线的bookieId
      *
      * @param ledgerId ledger id
      * @param missingReplicas missing replicas

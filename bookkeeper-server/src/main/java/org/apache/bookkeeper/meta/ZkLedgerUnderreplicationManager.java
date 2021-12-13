@@ -299,9 +299,12 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
         if (LOG.isDebugEnabled()) {
             LOG.debug("markLedgerUnderreplicated(ledgerId={}, missingReplica={})", ledgerId, missingReplicas);
         }
+        //获取acl
         final List<ACL> zkAcls = ZkUtils.getACLs(conf);
+        //获取ledgers目录节点
         final String znode = getUrLedgerZnode(ledgerId);
         final CompletableFuture<Void> createFuture = new CompletableFuture<>();
+        //创建对应的zk目录
         tryMarkLedgerUnderreplicatedAsync(znode, missingReplicas, zkAcls, createFuture);
         return createFuture;
     }
@@ -316,12 +319,14 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
         }
         missingReplicas.forEach(builder::addReplica);
         final byte[] urLedgerData = builder.build().toString().getBytes(UTF_8);
+        //这里创建对应目录
         ZkUtils.asyncCreateFullPathOptimistic(
             zkc, znode, urLedgerData, zkAcls, CreateMode.PERSISTENT,
             (rc, path, ctx, name) -> {
                 if (Code.OK.intValue() == rc) {
                     FutureUtils.complete(finalFuture, null);
                 } else if (Code.NODEEXISTS.intValue() == rc) {
+                    //我们需要处理账本被标记为复制不足的情况
                     // we need to handle the case where the ledger has been marked as underreplicated
                     handleLedgerUnderreplicatedAlreadyMarked(znode, missingReplicas, zkAcls, finalFuture);
                 } else {

@@ -1004,6 +1004,7 @@ public abstract class AbstractConfiguration<T extends AbstractConfiguration>
     }
 
     /**
+     * 返回标志，指示审计员是否使用系统时间作为未充分复制的分类账标记时间。
      * Return the flag that indicates whether auditor is using system time as
      * underreplicated ledger mark time.
      *

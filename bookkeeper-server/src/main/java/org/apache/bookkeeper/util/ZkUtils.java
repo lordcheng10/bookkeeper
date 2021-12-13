@@ -81,6 +81,7 @@ public class ZkUtils {
                     return;
                 }
 
+                // 因为我有一个nonode，这意味着我的父母不存在
                 // Since I got a nonode, it means that my parents don't exist
                 // create mode is persistent since ephemeral nodes can't be
                 // parents

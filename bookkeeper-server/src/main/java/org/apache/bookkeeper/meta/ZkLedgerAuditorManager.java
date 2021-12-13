@@ -50,26 +50,36 @@ import org.apache.zookeeper.data.ACL;
  */
 @Slf4j
 public class ZkLedgerAuditorManager implements LedgerAuditorManager {
-
+    // zookeeper客户端
     private final ZooKeeper zkc;
+    // server config配置
     private final ServerConfiguration conf;
+    // 基本路径
     private final String basePath;
+    // 选举路径
     private final String electionPath;
-
+    // 我的选票
     private String myVote;
 
+    // 选举路径节点
     private static final String ELECTION_ZNODE = "auditorelection";
 
+    //表示选出的auditor节点的索引
     // Represents the index of the auditor node
     private static final int AUDITOR_INDEX = 0;
+    // 表示投票前缀
     // Represents vote prefix
     private static final String VOTE_PREFIX = "V_";
+    // 表示路径分隔符
     // Represents path Separator
     private static final String PATH_SEPARATOR = "/";
 
+    // auditor事件监听器
     private volatile Consumer<AuditorEvent> listener;
+    // 是否被关闭
     private volatile boolean isClosed = false;
 
+    // 暴露统计数据
     // Expose Stats
     @StatsDoc(
             name = ELECTION_ATTEMPTS,
@@ -77,13 +87,17 @@ public class ZkLedgerAuditorManager implements LedgerAuditorManager {
     )
     private final Counter electionAttempts;
 
+    // zookeeper审计管理
     public ZkLedgerAuditorManager(ZooKeeper zkc, ServerConfiguration conf, StatsLogger statsLogger) {
         this.zkc = zkc;
         this.conf = conf;
 
+        // 基本路径：under replica
         this.basePath = ZKMetadataDriverBase.resolveZkLedgersRootPath(conf) + '/'
                 + BookKeeperConstants.UNDER_REPLICATION_NODE;
+        //选举路径
         this.electionPath = basePath + '/' + ELECTION_ZNODE;
+        //尝试次数
         this.electionAttempts = statsLogger.getCounter(ELECTION_ATTEMPTS);
     }
 

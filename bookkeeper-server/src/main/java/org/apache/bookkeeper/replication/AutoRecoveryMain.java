@@ -67,36 +67,49 @@ import org.slf4j.LoggerFactory;
 public class AutoRecoveryMain {
     private static final Logger LOG = LoggerFactory
             .getLogger(AutoRecoveryMain.class);
-
+    // server config配置
     private final ServerConfiguration conf;
+    // bookkeeper 客户端
     final BookKeeper bkc;
+    // auditor审计选举
     final AuditorElector auditorElector;
+    // 复制worker
     final ReplicationWorker replicationWorker;
+    // auto recovery 挂掉监听器
     final AutoRecoveryDeathWatcher deathWatcher;
+    // 退出代码
     int exitCode;
+    // 是否shutdown
     private volatile boolean shuttingDown = false;
+    //  是否正在运行
     private volatile boolean running = false;
-
+    // 异常处理handle
     // Exception handler
     private volatile UncaughtExceptionHandler uncaughtExceptionHandler = null;
 
+    // 自动recovery程序，这里不需要stats metric提供者，这个主要是测试程序使用
     public AutoRecoveryMain(ServerConfiguration conf) throws IOException,
             InterruptedException, KeeperException, UnavailableException,
             CompatibilityException {
         this(conf, NullStatsLogger.INSTANCE);
     }
 
+    // 传入serverconfig 配置和stats provider
     public AutoRecoveryMain(ServerConfiguration conf, StatsLogger statsLogger)
             throws IOException, InterruptedException, KeeperException, UnavailableException,
             CompatibilityException {
         this.conf = conf;
+        // bookkeeper客户端
         this.bkc = Auditor.createBookKeeperClient(conf, statsLogger.scope(BookKeeperClientStats.CLIENT_SCOPE));
+        // metadata client驱动器
         MetadataClientDriver metadataClientDriver = bkc.getMetadataClientDriver();
+        // 如果和zk连接超时，那么就会退出
         metadataClientDriver.setSessionStateListener(() -> {
             LOG.error("Client connection to the Metadata server has expired, so shutting down AutoRecoveryMain!");
             shutdown(ExitCode.ZK_EXPIRED);
         });
 
+        // 构建auditor
         //auditor审计选举器
         auditorElector = new AuditorElector(
             BookieImpl.getBookieId(conf).toString(),
@@ -114,7 +127,9 @@ public class AutoRecoveryMain {
         deathWatcher = new AutoRecoveryDeathWatcher(this);
     }
 
-    /*
+    /**
+     *
+     *  该接口是提供给bookie内启动recovery时 在AutoRecoveryService中用的
      * Start daemons
      */
     public void start() {
@@ -131,7 +146,8 @@ public class AutoRecoveryMain {
         running = true;
     }
 
-    /*
+    /**
+     * 该方法没有被使用
      * Waits till all daemons joins
      */
     public void join() throws InterruptedException {
@@ -172,6 +188,10 @@ public class AutoRecoveryMain {
         }
     }
 
+
+    /**
+     * 没有使用
+     * */
     private int getExitCode() {
         return exitCode;
     }
@@ -311,6 +331,7 @@ public class AutoRecoveryMain {
         }
     }
 
+    //这个是单独部署时候，在shell脚本里用的
     public static void main(String[] args) {
         int retCode = doMain(args);
         Runtime.getRuntime().exit(retCode);
@@ -319,7 +340,7 @@ public class AutoRecoveryMain {
     static int doMain(String[] args) {
 
         ServerConfiguration conf;
-
+        // 解析命令
         // 0. parse command line
         try {
             conf = parseArgs(args);
@@ -332,6 +353,7 @@ public class AutoRecoveryMain {
             return ExitCode.INVALID_CONF;
         }
 
+        // 构建要启动的组件
         // 1. building the component stack:
         LifecycleComponent server;
         try {
@@ -341,6 +363,7 @@ public class AutoRecoveryMain {
             return ExitCode.SERVER_EXCEPTION;
         }
 
+        // 启动服务
         // 2. start the server
         try {
             ComponentStarter.startComponent(server).get();
@@ -358,7 +381,7 @@ public class AutoRecoveryMain {
     public static LifecycleComponentStack buildAutoRecoveryServer(BookieConfiguration conf) throws Exception {
         LifecycleComponentStack.Builder serverBuilder = LifecycleComponentStack.newBuilder()
                 .withName("autorecovery-server");
-
+        //构建metric provider，通常是promethus provider
         // 1. build stats provider
         StatsProviderService statsProviderService = new StatsProviderService(conf);
         StatsLogger rootStatsLogger = statsProviderService.getStatsProvider().getStatsLogger("");
@@ -366,12 +389,14 @@ public class AutoRecoveryMain {
         serverBuilder.addComponent(statsProviderService);
         LOG.info("Load lifecycle component : {}", StatsProviderService.class.getName());
 
+        // 构建autorecovery 服务
         // 2. build AutoRecovery server
         AutoRecoveryService autoRecoveryService = new AutoRecoveryService(conf, rootStatsLogger);
 
         serverBuilder.addComponent(autoRecoveryService);
         LOG.info("Load lifecycle component : {}", AutoRecoveryService.class.getName());
 
+        // 构建http服务
         // 4. build http service
         if (conf.getServerConf().isHttpServerEnabled()) {
             BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()

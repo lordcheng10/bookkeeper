@@ -762,9 +762,11 @@ public class Auditor implements AutoCloseable {
 
     public void start() {
         LOG.info("I'm starting as Auditor Bookie. ID: {}", bookieIdentifier);
+        // 在启动时观看可用bookie并根据可用bookie确定故障的bookie。
         // on startup watching available bookie and based on the
         // available bookies determining the bookie failures.
         synchronized (this) {
+            //首先看executor是否已经关闭了
             if (executor.isShutdown()) {
                 return;
             }
@@ -780,6 +782,7 @@ public class Auditor implements AutoCloseable {
             }
 
             try {
+                // 注册一个lost delay 变更的watcher
                 this.ledgerUnderreplicationManager
                         .notifyLostBookieRecoveryDelayChanged(new LostBookieRecoveryDelayChangedCb());
             } catch (UnavailableException ue) {
@@ -1149,7 +1152,9 @@ public class Auditor implements AutoCloseable {
      */
     private void startAudit(boolean shutDownTask) {
         try {
+            //开启audit
             auditBookies();
+            //shutdown设置未false
             shutDownTask = false;
         } catch (BKException bke) {
             LOG.error("Exception getting bookie list", bke);
@@ -1205,6 +1210,7 @@ public class Auditor implements AutoCloseable {
         //丢失的bookie节点是否大于0
         if (lostBookies.size() > 0) {
             try {
+                //这里才是真正处理lost bookie的地方
                 FutureUtils.result(
                     handleLostBookiesAsync(lostBookies, ledgerDetails), ReplicationException.EXCEPTION_HANDLER);
             } catch (ReplicationException e) {
@@ -1230,13 +1236,17 @@ public class Auditor implements AutoCloseable {
 
         return FutureUtils.processList(
             Lists.newArrayList(lostBookies),
+            //这里回遍历每个bookie节点，然后调用publishSuspectedLedgersAsync
             bookieIP -> publishSuspectedLedgersAsync(
                 Lists.newArrayList(bookieIP), ledgerDetails.get(bookieIP)),
             null
         );
     }
 
+    // 异步发布可疑账本
+    // missingBookies是挂掉的bookie，而ledgers是其上的ledger
     private CompletableFuture<?> publishSuspectedLedgersAsync(Collection<String> missingBookies, Set<Long> ledgers) {
+        //如果对应的ledger集合为空，那么久返回void
         if (null == ledgers || ledgers.size() == 0) {
             // there is no ledgers available for this bookie and just
             // ignoring the bookie failures
@@ -1246,11 +1256,14 @@ public class Auditor implements AutoCloseable {
         LOG.info("Following ledgers: {} of bookie: {} are identified as underreplicated", ledgers, missingBookies);
         numUnderReplicatedLedger.registerSuccessfulValue(ledgers.size());
         LongAdder underReplicatedSize = new LongAdder();
+        //这里遍历所有的ledger，然后调用readLedgerMetadata来处理，这里其实就是为了统计下掉队的size，然后metric来暴露出去
         FutureUtils.processList(
                 Lists.newArrayList(ledgers),
                 ledgerId ->
+                        //获取ledger对应的元数据信息
                     ledgerManager.readLedgerMetadata(ledgerId).whenComplete((metadata, exception) -> {
                         if (exception == null) {
+                            //这里统计掉队的size
                             underReplicatedSize.add(metadata.getValue().getLength());
                         }
                     }), null);
@@ -1258,6 +1271,7 @@ public class Auditor implements AutoCloseable {
 
         return FutureUtils.processList(
             Lists.newArrayList(ledgers),
+            //这里才是真正遍历ledger，然后写zk
             ledgerId -> ledgerUnderreplicationManager.markLedgerUnderreplicatedAsync(ledgerId, missingBookies),
             null
         );
