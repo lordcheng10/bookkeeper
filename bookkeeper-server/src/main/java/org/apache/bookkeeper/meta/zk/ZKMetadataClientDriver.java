@@ -96,6 +96,14 @@ public class ZKMetadataClientDriver
         super.close();
     }
 
+    public boolean enableHealthCheck() {
+        try {
+            return null == zk.exists(conf.getEnableHealthPath(), false);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     @Override
     public void setSessionStateListener(SessionStateListener sessionStateListener) {
         zk.register((event) -> {

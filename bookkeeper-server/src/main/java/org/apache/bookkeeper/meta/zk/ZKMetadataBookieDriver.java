@@ -32,6 +32,9 @@ import org.apache.bookkeeper.meta.MetadataDrivers;
 import org.apache.bookkeeper.meta.exceptions.MetadataException;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.zookeeper.BoundExponentialBackoffRetryPolicy;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooDefs;
 
 /**
  * ZooKeeper based metadata bookie driver.
@@ -84,6 +87,22 @@ public class ZKMetadataBookieDriver
             );
         }
         return regManager;
+    }
+
+    public boolean isEnableHealthCheck() {
+        try {
+            return null == zk.exists(conf.getEnableHealthPath(), false);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    public void disableHealthCheck(String enableHealthPath) throws Exception{
+        zk.create(enableHealthPath, new byte[0], ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+    }
+
+    public void enableHealthCheck(String enableHealthPath) throws KeeperException, InterruptedException {
+        zk.delete(enableHealthPath, -1);
     }
 
     @Override

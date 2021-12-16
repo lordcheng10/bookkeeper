@@ -616,6 +616,11 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
     }
 
     void checkForFaultyBookies() {
+        if (!enableHealthCheck()) {
+            LOG.info("enableHealthCheck is false!");
+            return;
+        }
+
         List<BookieId> faultyBookies = bookieClient.getFaultyBookies();
         for (BookieId faultyBookie : faultyBookies) {
             if (Math.random() <= bookieQuarantineRatio) {
@@ -745,6 +750,13 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
 
     ZooKeeper getZkHandle() {
         return ((ZKMetadataClientDriver) metadataDriver).getZk();
+    }
+
+    boolean enableHealthCheck() {
+        if (metadataDriver instanceof ZKMetadataClientDriver) {
+            return ((ZKMetadataClientDriver) metadataDriver).enableHealthCheck();
+        }
+        return true;
     }
 
     protected ClientConfiguration getConf() {

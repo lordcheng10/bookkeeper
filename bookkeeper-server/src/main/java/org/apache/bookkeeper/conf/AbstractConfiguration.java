@@ -40,6 +40,7 @@ import org.apache.bookkeeper.meta.AbstractZkLedgerManagerFactory;
 import org.apache.bookkeeper.meta.HierarchicalLedgerManagerFactory;
 import org.apache.bookkeeper.meta.LedgerManagerFactory;
 import org.apache.bookkeeper.meta.LongHierarchicalLedgerManagerFactory;
+import org.apache.bookkeeper.meta.zk.ZKMetadataDriverBase;
 import org.apache.bookkeeper.util.EntryFormatter;
 import org.apache.bookkeeper.util.LedgerIdFormatter;
 import org.apache.bookkeeper.util.StringEntryFormatter;
@@ -91,6 +92,7 @@ public abstract class AbstractConfiguration<T extends AbstractConfiguration>
     protected static final String STORE_SYSTEMTIME_AS_LEDGER_CREATION_TIME = "storeSystemTimeAsLedgerCreationTime";
 
     protected static final String ENABLE_BUSY_WAIT = "enableBusyWait";
+    protected static final String ENABLE_HEALTH_CHECK = "enableHealthCheck";
 
     // Metastore settings, only being used when LEDGER_MANAGER_FACTORY_CLASS is MSLedgerManagerFactory
     protected static final String METASTORE_IMPL_CLASS = "metastoreImplClass";
@@ -513,6 +515,12 @@ public abstract class AbstractConfiguration<T extends AbstractConfiguration>
     @Deprecated
     public String getZkLedgersRootPath() {
         return getString(ZK_LEDGERS_ROOT_PATH, "/ledgers");
+    }
+
+    public String getEnableHealthPath() {
+        String zkLedgersRootPath = ZKMetadataDriverBase.resolveZkLedgersRootPath(this);
+        String ledgerParentPath = zkLedgersRootPath.substring(0, zkLedgersRootPath.lastIndexOf("/ledgers"));
+        return String.format("%s/%s", ledgerParentPath, "enableHealthCheck");
     }
 
     /**
