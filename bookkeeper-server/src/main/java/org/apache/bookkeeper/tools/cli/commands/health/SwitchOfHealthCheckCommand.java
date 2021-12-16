@@ -86,28 +86,14 @@ public class SwitchOfHealthCheckCommand extends BookieCommand<SwitchOfHealthChec
 
     private boolean handler(ServerConfiguration conf, HealthCheckFlags flags)
             throws MetadataException, ExecutionException {
-        try{
-            System.out.println("getMetadataServiceUri22=" + conf.getMetadataServiceUri());
-            System.out.println("conf.getEnableHealthPath()222=" + conf.getEnableHealthPath());
-
-        }catch (Exception e){
-            System.out.println("jjjl");
-        }
-
 
         MetadataDrivers.runFunctionWithMetadataBookieDriver(conf, driver -> {
             try {
-                String zkLedgersRootPath = ZKMetadataDriverBase.resolveZkLedgersRootPath(conf);
-                System.out.println("getMetadataServiceUri=" + conf.getMetadataServiceUri());
-                System.out.println("zkLedgersRootPath=" + zkLedgersRootPath);
                 String enableHealthPath = conf.getEnableHealthPath();
-                System.out.println("enableHealthPath=" + enableHealthPath);
 
                 if(!(driver instanceof ZKMetadataBookieDriver)){
                     return null;
                 }
-                LOG.info("flags1=" + flags.disable);
-
 
                 ZKMetadataBookieDriver zkDriver = (ZKMetadataBookieDriver) driver;
                 if (flags.status) {
@@ -118,26 +104,20 @@ public class SwitchOfHealthCheckCommand extends BookieCommand<SwitchOfHealthChec
 
                 if (flags.disable) {
                     if (!zkDriver.isEnableHealthCheck()) {
-                        System.out.println("xxx");
                         LOG.warn("HealthCheck already disable. Doing nothing");
                     } else {
-                        System.out.println("zzz");
                         LOG.info("Disable HealthCheck");
                         zkDriver.disableHealthCheck(enableHealthPath);
                     }
                 } else {
                     if (zkDriver.isEnableHealthCheck()) {
-                        System.out.println("yyy");
                         LOG.warn("HealthCheck already enable. Doing nothing");
                     } else {
-                        System.out.println("ggg");
                         LOG.info("Enable HealthCheck");
                         zkDriver.enableHealthCheck(enableHealthPath);
                     }
                 }
             } catch (Exception e) {
-                System.out.println("exception=" + e.getMessage());
-
                 LOG.error("exception", e);
                 throw new UncheckedExecutionException(e);
             }
