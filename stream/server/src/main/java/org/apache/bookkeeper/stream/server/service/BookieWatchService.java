@@ -37,6 +37,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stream.server.conf.BookieConfiguration;
 
 /**
+ * 一种监视bookie并等待最小数量的bookie存活的服务。
  * A service that watches bookies and wait for minimum number of bookies to be alive.
  */
 @Slf4j
@@ -62,6 +63,7 @@ public class BookieWatchService
         try {
             MetadataDrivers.runFunctionWithMetadataClientDriver(clientConf, clientDriver -> {
                 try {
+                    // 注册的client、最小bookie数
                     waitingForNumBookies(clientDriver.getRegistrationClient(), minNumBookies);
                 } catch (Exception e) {
                     log.error("Encountered exceptions on waiting {} bookies to be alive", minNumBookies);
@@ -77,7 +79,9 @@ public class BookieWatchService
 
     private static void waitingForNumBookies(RegistrationClient client, int minNumBookies) throws Exception {
         Stopwatch stopwatch = Stopwatch.createStarted();
+        // 获取当前活着的bookie
         Set<BookieId> bookies = FutureUtils.result(client.getWritableBookies()).getValue();
+        // 如果活着的bookie数小于最小bookie数，那么久输出一个日志
         while (bookies.size() < minNumBookies) {
             TimeUnit.SECONDS.sleep(1);
             bookies = FutureUtils.result(client.getWritableBookies()).getValue();

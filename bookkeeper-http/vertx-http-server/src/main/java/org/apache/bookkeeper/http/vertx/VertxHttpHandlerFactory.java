@@ -38,6 +38,7 @@ public class VertxHttpHandlerFactory extends AbstractHttpHandlerFactory<VertxAbs
         super(httpServiceProvider);
     }
 
+    //这里会根据type类型来创建HttpEndpointService实现类
     @Override
     public VertxAbstractHandler newHandler(HttpServer.ApiType type) {
         return new VertxAbstractHandler() {

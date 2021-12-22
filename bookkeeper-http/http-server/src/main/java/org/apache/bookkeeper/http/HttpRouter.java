@@ -30,20 +30,32 @@ import java.util.Map;
 public abstract class HttpRouter<Handler> {
 
     // Define endpoints here.
+    //heartbeat只是探测下是否活着
     public static final String HEARTBEAT                    = "/heartbeat";
+    // 看起来是获取对应的bookie配置(加载到内存的conf配置文件配置)
     public static final String SERVER_CONFIG                = "/api/v1/config/server_config";
+    // 获取metric，这个和promethus暴露的接口的差不多
     public static final String METRICS                      = "/metrics";
 
+    // 指定删除某个leadger
     // ledger
     public static final String DELETE_LEDGER                = "/api/v1/ledger/delete";
+    // list所有的leadger
     public static final String LIST_LEDGER                  = "/api/v1/ledger/list";
+    // 获取ledger元数据
     public static final String GET_LEDGER_META              = "/api/v1/ledger/metadata";
+    // 读取某个ledger的数据
     public static final String READ_LEDGER_ENTRY            = "/api/v1/ledger/read";
     // bookie
+    //list 集群的所有bookie节点
     public static final String LIST_BOOKIES                 = "/api/v1/bookie/list_bookies";
+    // 获取整个集群的bookie详细信息
     public static final String LIST_BOOKIE_INFO             = "/api/v1/bookie/list_bookie_info";
+    // 获取上次标记位置
     public static final String LAST_LOG_MARK                = "/api/v1/bookie/last_log_mark";
+    // 获取对应的存储文件
     public static final String LIST_DISK_FILE               = "/api/v1/bookie/list_disk_file";
+    // 获取扩展存储
     public static final String EXPAND_STORAGE               = "/api/v1/bookie/expand_storage";
     public static final String GC                           = "/api/v1/bookie/gc";
     public static final String GC_DETAILS                   = "/api/v1/bookie/gc_details";
@@ -57,12 +69,14 @@ public abstract class HttpRouter<Handler> {
     public static final String WHO_IS_AUDITOR               = "/api/v1/autorecovery/who_is_auditor";
     public static final String TRIGGER_AUDIT                = "/api/v1/autorecovery/trigger_audit";
     public static final String LOST_BOOKIE_RECOVERY_DELAY   = "/api/v1/autorecovery/lost_bookie_recovery_delay";
+    //decommission: 退役
     public static final String DECOMMISSION                 = "/api/v1/autorecovery/decommission";
 
 
     private final Map<String, Handler> endpointHandlers = new HashMap<>();
 
     public HttpRouter(AbstractHttpHandlerFactory<Handler> handlerFactory) {
+        //这里回放入所有的HttpEndpointService实现类,通过handlerFactory工厂类来创建,这里对应的工厂实现类只有VertxHttpHandlerFactory
         this.endpointHandlers.put(HEARTBEAT, handlerFactory.newHandler(HttpServer.ApiType.HEARTBEAT));
         this.endpointHandlers.put(SERVER_CONFIG, handlerFactory.newHandler(HttpServer.ApiType.SERVER_CONFIG));
         this.endpointHandlers.put(METRICS, handlerFactory.newHandler(HttpServer.ApiType.METRICS));
@@ -108,6 +122,8 @@ public abstract class HttpRouter<Handler> {
     }
 
     /**
+     * 这里不是相应端口吧  是上面的key，这个名字endpoint有点歧义.
+     *
      * Bind the given endpoint to its corresponding handlers.
      * @param endpoint http endpoint
      * @param handler http handler

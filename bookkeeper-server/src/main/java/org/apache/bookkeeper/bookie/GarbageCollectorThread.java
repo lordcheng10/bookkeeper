@@ -51,6 +51,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 这是在后台运行的垃圾收集器线程，用于删除不再包含任何活动分类账的任何条目日志文件。
+ *
  * This is the garbage collector thread that runs in the background to
  * remove any entry log files that no longer contains any active ledger.
  */
@@ -58,9 +60,10 @@ public class GarbageCollectorThread extends SafeRunnable {
     private static final Logger LOG = LoggerFactory.getLogger(GarbageCollectorThread.class);
     private static final int SECOND = 1000;
 
+    // 将输入日志文件映射到一组分类账，这些分类账包括文件和每个分类账的大小使用情况
     // Maps entry log files to the set of ledgers that comprise the file and the size usage per ledger
     private Map<Long, EntryLogMetadata> entryLogMetaMap = new ConcurrentHashMap<Long, EntryLogMetadata>();
-
+    // 数据清理线程池
     private final ScheduledExecutorService gcExecutor;
     Future<?> scheduledFuture = null;
 

@@ -37,23 +37,28 @@ import org.apache.bookkeeper.stats.StatsLogger;
 public class HttpService extends ServerLifecycleComponent {
 
     public static final String NAME = "http-service";
-
+    //http server
     private HttpServer server;
 
+    //provider: 服务提供者，用来专门创建http服务的；
+    //conf：配置
+    //statsLogger: metric
     public HttpService(BKHttpServiceProvider provider,
                        BookieConfiguration conf,
                        StatsLogger statsLogger) {
         super(NAME, conf, statsLogger);
-
+        //这里通过配置来加载对应的http server实现类，默认是创建VertxHttpServer类对象
         HttpServerLoader.loadHttpServer(conf.getServerConf());
         server = HttpServerLoader.get();
         checkNotNull(server, "httpServerClass is not configured or it could not be started,"
                 + " please check your configuration and logs");
+        //使用provider来初始化
         server.initialize(provider);
     }
 
     @Override
     protected void doStart() {
+        //启动HttpServer
         server.startServer(conf.getServerConf().getHttpServerPort(), conf.getServerConf().getHttpServerHost());
     }
 
@@ -64,11 +69,14 @@ public class HttpService extends ServerLifecycleComponent {
 
     @Override
     protected void doClose() throws IOException {
+        // 停止HttpServer
         server.stopServer();
     }
 
+    //将自己需要注册的端口，发布到组件中
     @Override
     public void publishInfo(ComponentInfoPublisher componentInfoPublisher) {
+        //将端口注册到组件中
         if (conf.getServerConf().isHttpServerEnabled()) {
             EndpointInfo endpoint = new EndpointInfo("httpserver",
                     conf.getServerConf().getHttpServerPort(),

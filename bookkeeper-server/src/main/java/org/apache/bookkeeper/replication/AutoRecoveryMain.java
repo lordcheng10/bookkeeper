@@ -306,6 +306,7 @@ public class AutoRecoveryMain {
         Runtime.getRuntime().exit(retCode);
     }
 
+    //单独部署该auto recovery服务，
     static int doMain(String[] args) {
 
         ServerConfiguration conf;
@@ -362,6 +363,8 @@ public class AutoRecoveryMain {
         serverBuilder.addComponent(autoRecoveryService);
         LOG.info("Load lifecycle component : {}", AutoRecoveryService.class.getName());
 
+        //auto recovery程序会启动HttpService，如果是单独部署autorecovery的话，那么会通过main方法启动程序，然后启动http服务，
+        //如果是启动在bookkeeper进程内部，那么会通过该类的start方法来启动auto recovery.
         // 4. build http service
         if (conf.getServerConf().isHttpServerEnabled()) {
             BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()

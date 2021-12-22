@@ -38,6 +38,7 @@ public class HttpServerLoader {
     static HttpServer server = null;
 
     public static void loadHttpServer(Configuration conf) {
+        //默认httpServerClass配置是VertxHttpServer类
         String className = conf.getString(HTTP_SERVER_CLASS);
         if (className != null) {
             try {

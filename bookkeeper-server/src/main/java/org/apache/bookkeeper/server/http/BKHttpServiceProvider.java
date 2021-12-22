@@ -67,6 +67,8 @@ import org.apache.bookkeeper.stats.StatsProvider;
 import org.apache.zookeeper.KeeperException;
 
 /**
+ * HttpServiceProvider 的基于 Bookkeeper 的实现，它提供 bookkeeper 服务来处理来自不同 端口的 http 请求。
+ *
  * Bookkeeper based implementation of HttpServiceProvider,
  * which provide bookkeeper services to handle http requests
  * from different http endpoints.
@@ -177,13 +179,16 @@ public class BKHttpServiceProvider implements HttpServiceProvider {
         }
     }
 
+    //提供http端口服务
     @Override
     public HttpEndpointService provideHttpEndpointService(ApiType type) {
         ServerConfiguration configuration = getServerConf();
+        // configuration如果为null，那么就返回ErrorHttpService
         if (configuration == null) {
             return new ErrorHttpService();
         }
 
+        //这里看来提供了很多http服务
         switch (type) {
             case HEARTBEAT:
                 return new HeartbeatService();
@@ -198,6 +203,7 @@ public class BKHttpServiceProvider implements HttpServiceProvider {
             case LIST_LEDGER:
                 return new ListLedgerService(configuration, ledgerManagerFactory);
             case GET_LEDGER_META:
+                //根据类型来创建对应服务
                 return new GetLedgerMetaService(configuration, ledgerManagerFactory);
             case READ_LEDGER_ENTRY:
                 return new ReadLedgerEntryService(configuration, bka);

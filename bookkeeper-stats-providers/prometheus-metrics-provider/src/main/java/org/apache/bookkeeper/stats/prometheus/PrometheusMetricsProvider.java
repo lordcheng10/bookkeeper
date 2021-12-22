@@ -100,6 +100,9 @@ public class PrometheusMetricsProvider implements StatsProvider {
     public void start(Configuration conf) {
         boolean httpEnabled = conf.getBoolean(PROMETHEUS_STATS_HTTP_ENABLE, DEFAULT_PROMETHEUS_STATS_HTTP_ENABLE);
         boolean bkHttpServerEnabled = conf.getBoolean("httpServerEnabled", false);
+        // 仅在启用 prometheus http 而未启用 bk http 服务器时启动自己的 http 服务器.
+        // 也就是说prometheusStatsHttpEnable和httpServerEnabled配置，如果同时开启，那么只会开启httpServerEnabled，
+        //因为全局的http服务就提供了metric功能，那么如果要将老集群开启全局的http服务的话，需要将端口改为原本promethus使用的端口，默认是8000，否则的话，会导致原本promethus拉取的端口失效。
         // only start its own http server when prometheus http is enabled and bk http server is not enabled.
         if (httpEnabled && !bkHttpServerEnabled) {
             String httpAddr = conf.getString(PROMETHEUS_STATS_HTTP_ADDRESS, DEFAULT_PROMETHEUS_STATS_HTTP_ADDR);

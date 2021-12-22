@@ -76,6 +76,8 @@ import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.distributedlog.DistributedLogConfiguration;
 
 /**
+ * 看起来是一个Table Service API
+ * 存储服务器是运行存储服务并处理 rpc 请求的服务器。
  * A storage server is a server that run storage service and serving rpc requests.
  */
 @Slf4j
@@ -135,6 +137,7 @@ public class StorageServer {
     }
 
     static int doMain(String[] args) {
+        // 注册线程未捕获的异常处理程序
         // register thread uncaught exception handler
         Thread.setDefaultUncaughtExceptionHandler((thread, exception) ->
             log.error("Uncaught exception in thread {}: {}", thread.getName(), exception.getMessage()));
@@ -155,11 +158,15 @@ public class StorageServer {
             loadConfFile(conf, arguments.serverConfigFile);
         }
 
+        // grpc端口
         int grpcPort = arguments.port;
+        // grpc 主机名
         boolean grpcUseHostname = arguments.useHostname;
 
+        // 存储服务
         LifecycleComponent storageServer;
         try {
+            // 构建存储服务
             storageServer = buildStorageServer(
                 conf,
                 grpcPort,
@@ -169,6 +176,7 @@ public class StorageServer {
             return ExitCode.INVALID_CONF.code();
         }
 
+        // live future
         CompletableFuture<Void> liveFuture =
             ComponentStarter.startComponent(storageServer);
         try {
@@ -195,6 +203,7 @@ public class StorageServer {
         return buildStorageServer(conf, grpcPort, false, useHostname, NullStatsLogger.INSTANCE);
     }
 
+    // 配置、grpc端口、是否用hostname、是否启动bookie并开启provider、扩展状态
     public static LifecycleComponent buildStorageServer(CompositeConfiguration conf,
                                                         int grpcPort,
                                                         boolean useHostname,
@@ -203,32 +212,38 @@ public class StorageServer {
             throws Exception {
 
         final ComponentInfoPublisher componentInfoPublisher = new ComponentInfoPublisher();
-
+        // bookie 服务信息provider
         final Supplier<BookieServiceInfo> bookieServiceInfoProvider =
                 () -> buildBookieServiceInfo(componentInfoPublisher);
 
+        //服务构建器
         LifecycleComponentStack.Builder serverBuilder = LifecycleComponentStack.newBuilder()
             .withName("storage-server")
             .withComponentInfoPublisher(componentInfoPublisher);
-
+        // bkConf配置
         BookieConfiguration bkConf = BookieConfiguration.of(conf);
         bkConf.validate();
-
+        // DL配置
         DLConfiguration dlConf = DLConfiguration.of(conf);
         dlConf.validate();
 
+        //存储服务配置
         StorageServerConfiguration serverConf = StorageServerConfiguration.of(conf);
         serverConf.validate();
 
+        //存储配置
         StorageConfiguration storageConf = new StorageConfiguration(conf);
         storageConf.validate();
 
+        // 获取本地端口
         // Get my local endpoint
         Endpoint myEndpoint = createLocalEndpoint(grpcPort, useHostname);
 
+        // 创建共享资源
         // Create shared resources
         StorageResources storageResources = StorageResources.create();
 
+        // 创建状态提供器
         // Create the stats provider
         StatsLogger rootStatsLogger;
         StatsProviderService statsProviderService = null;
@@ -242,18 +257,23 @@ public class StorageServer {
                 "External stats logger is not provided while not starting stats provider");
         }
 
+        // 转储配置
         // dump configurations
         log.info("Dlog configuration : {}", dlConf.asJson());
         log.info("Storage configuration : {}", storageConf.asJson());
         log.info("Server configuration : {}", serverConf.asJson());
 
+        // 创建 bookie 服务
         // Create the bookie service
         ServerConfiguration bkServerConf;
+        // 判断是否要启动bookie并启动BKHttpServiceProvider
         if (startBookieAndStartProvider) {
+            // 添加BookieService
             BookieService bookieService = new BookieService(bkConf, rootStatsLogger, bookieServiceInfoProvider);
             serverBuilder.addComponent(bookieService);
             bkServerConf = bookieService.serverConf();
 
+            // 存储服务里面启动http服务
             // Build http service
             if (bkServerConf.isHttpServerEnabled()) {
                 BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()
@@ -274,31 +294,39 @@ public class StorageServer {
             bkServerConf.loadConf(bkConf.getUnderlyingConf());
         }
 
+        // 创建 bookie watch 服务
         // Create the bookie watch service
         BookieWatchService bkWatchService;
         {
+            // DistributedLogConfiguration：分布式log配置
             DistributedLogConfiguration dlogConf = new DistributedLogConfiguration();
+            // 加载配置
             dlogConf.loadConf(dlConf);
+            // 构建watch服务：用来监听bookie节点存活情况
             bkWatchService = new BookieWatchService(
                 dlogConf.getEnsembleSize(),
                 bkConf,
                 NullStatsLogger.INSTANCE);
         }
 
+        // 创建策展人提供者服务
         // Create the curator provider service
         CuratorProviderService curatorProviderService = new CuratorProviderService(
             bkServerConf, dlConf, rootStatsLogger.scope("curator"));
 
+        // 创建分布式日志命名空间服务
         // Create the distributedlog namespace service
         DLNamespaceProviderService dlNamespaceProvider = new DLNamespaceProviderService(
             bkServerConf,
             dlConf,
             rootStatsLogger.scope("dlog"));
 
+        // 代理通道的客户端设置
         // client settings for the proxy channels
         StorageClientSettings proxyClientSettings = StorageClientSettings.newBuilder()
             .serviceUri("bk://localhost:" + grpcPort)
             .build();
+        // 创建范围（流）存储
         // Create range (stream) store
         StorageContainerStoreBuilder storageContainerStoreBuilder = StorageContainerStoreBuilder.newBuilder()
             .withStatsLogger(rootStatsLogger.scope("storage"))
@@ -345,9 +373,11 @@ public class StorageServer {
                     // intercept the channel to attach routing header
                     .andThen(channel -> channel.intercept(new RoutingHeaderProxyInterceptor()))
             ));
+        //构建存储服务
         StorageService storageService = new StorageService(
             storageConf, storageContainerStoreBuilder, rootStatsLogger.scope("storage"));
 
+        // 创建grpc服务
         // Create gRPC server
         StatsLogger rpcStatsLogger = rootStatsLogger.scope("grpc");
         GrpcServerSpec serverSpec = GrpcServerSpec.builder()
@@ -359,12 +389,14 @@ public class StorageServer {
         GrpcService grpcService = new GrpcService(
             serverConf, serverSpec, rpcStatsLogger);
 
+        // 创建注册服务提供者
         // Create a registration service provider
         RegistrationServiceProvider regService = new RegistrationServiceProvider(
             bkServerConf,
             dlConf,
             rootStatsLogger.scope("registration").scope("provider"));
 
+        // 仅在服务就绪时创建注册状态服务。
         // Create a registration state service only when service is ready.
         RegistrationStateService regStateService = new RegistrationStateService(
             myEndpoint,
@@ -373,6 +405,7 @@ public class StorageServer {
             regService,
             rootStatsLogger.scope("registration"));
 
+        // 创建集群控制器服务
         // Create a cluster controller service
         ClusterControllerService clusterControllerService = new ClusterControllerService(
             storageConf,
@@ -387,6 +420,7 @@ public class StorageServer {
                 storageConf),
             rootStatsLogger.scope("cluster_controller"));
 
+        // 创建所有服务堆栈
         // Create all the service stack
         return serverBuilder
             .addComponent(bkWatchService)           // service that watches bookies

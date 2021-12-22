@@ -312,6 +312,7 @@ public class Main {
                 .withComponentInfoPublisher(componentInfoPublisher)
                 .withName("bookie-server");
 
+        //构建并添加statsProviderService组件
         // 1. build stats provider
         StatsProviderService statsProviderService =
             new StatsProviderService(conf);
@@ -319,6 +320,7 @@ public class Main {
         serverBuilder.addComponent(statsProviderService);
         log.info("Load lifecycle component : {}", StatsProviderService.class.getName());
 
+        // 构建metadata组件
         // 2. Build metadata driver
         MetadataBookieDriver metadataDriver = BookieResources.createMetadataDriver(
                 conf.getServerConf(), rootStatsLogger);
@@ -326,12 +328,14 @@ public class Main {
         RegistrationManager rm = metadataDriver.createRegistrationManager();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("registrationManager", rm));
 
+        //狗案件ledger管理组件
         // 3. Build ledger manager
         LedgerManagerFactory lmFactory = metadataDriver.getLedgerManagerFactory();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("lmFactory", lmFactory));
         LedgerManager ledgerManager = lmFactory.newLedgerManager();
         serverBuilder.addComponent(new AutoCloseableLifecycleComponent("ledgerManager", ledgerManager));
 
+        // 构建bookie
         // 4. Build bookie
         StatsLogger bookieStats = rootStatsLogger.scope(BOOKIE_SCOPE);
         DiskChecker diskChecker = BookieResources.createDiskChecker(conf.getServerConf());
@@ -364,6 +368,7 @@ public class Main {
                                     bookieServiceInfoProvider);
         }
 
+        // 构建bookie服务组件
         // 5. build bookie server
         BookieService bookieService =
             new BookieService(conf, bookie, rootStatsLogger, allocator);
@@ -378,6 +383,7 @@ public class Main {
                     conf, bookieService.getServer().getBookie().getLedgerStorage()));
         }
 
+        //构建auto recovery组件
         // 6. build auto recovery
         if (conf.getServerConf().isAutoRecoveryDaemonEnabled()) {
             AutoRecoveryService autoRecoveryService =
@@ -387,6 +393,7 @@ public class Main {
             log.info("Load lifecycle component : {}", AutoRecoveryService.class.getName());
         }
 
+        //在bookkeeper进程中，启动http请求
         // 7. build http service
         if (conf.getServerConf().isHttpServerEnabled()) {
             BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()
@@ -401,6 +408,7 @@ public class Main {
             log.info("Load lifecycle component : {}", HttpService.class.getName());
         }
 
+        // 放入额外的组件
         // 8. build extra services
         String[] extraComponents = conf.getServerConf().getExtraServerComponents();
         if (null != extraComponents) {

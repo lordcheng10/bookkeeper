@@ -18,6 +18,7 @@ import org.apache.bookkeeper.common.conf.ComponentConfiguration;
 import org.apache.commons.configuration.CompositeConfiguration;
 
 /**
+ * 一个配置委托分布式日志配置
  * A configuration delegates distributedlog configuration {@link org.apache.distributedlog.DistributedLogConfiguration}.
  */
 public class DLConfiguration extends ComponentConfiguration {

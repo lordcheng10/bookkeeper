@@ -40,6 +40,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ *
+ * 处理 Bookkeeper 的 HttpEndpointService 扩展存储相关的 http 请求。 PUT 方法将扩展这个 bookie 的存储。 在运行命令之前，用户应该使用新的空分类帐/索引目录更新 conf 文件中的目录信息。
  * HttpEndpointService that handle Bookkeeper expand storage related http request.
  * The PUT method will expand this bookie's storage.
  * User should update the directories info in the conf file with new empty ledger/index
