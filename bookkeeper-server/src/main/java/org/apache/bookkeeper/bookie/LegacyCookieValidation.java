@@ -54,27 +54,35 @@ public class LegacyCookieValidation implements CookieValidation {
         this.registrationManager = registrationManager;
     }
 
+    // 这个会在3个地方都会被调用，bookie进程启动、扩容服务、admin命令
     @Override
     public void checkCookies(List<File> directories) throws BookieException {
         try {
+            //  检索实例 ID
             // 1. retrieve the instance id
             String instanceId = registrationManager.getClusterInstanceId();
 
+            // 构建master cookie从配置文件中
             // 2. build the master cookie from the configuration
             Cookie.Builder builder = Cookie.generateCookie(conf);
             if (null != instanceId) {
                 builder.setInstanceId(instanceId);
             }
             Cookie masterCookie = builder.build();
+            // 判断是否允许扩容
             boolean allowExpansion = conf.getAllowStorageExpansion();
 
+            // 从注册管理器读取 cookie。 它是给定bookie的“真相来源”。
+            //如果注册管理器中不存在，则该bookie为新bookie，否则为旧bookie。
             // 3. read the cookie from registration manager. it is the `source-of-truth` of a given bookie.
             //    if it doesn't exist in registration manager, this bookie is a new bookie, otherwise it is
             //    an old bookie.
             List<BookieId> possibleBookieIds = possibleBookieIds(conf);
+            // 从注册管理器读取并验证 Cookie，这里的rmCookie，rm代表的是register manager，注册管理器的缩写
             final Versioned<Cookie> rmCookie = readAndVerifyCookieFromRegistrationManager(
                     masterCookie, registrationManager, possibleBookieIds, allowExpansion);
 
+            // 检查 cookie 是否出现在所有目录中。
             // 4. check if the cookie appear in all the directories.
             List<File> missedCookieDirs = new ArrayList<>();
             List<Cookie> existingCookies = Lists.newArrayList();
@@ -165,15 +173,21 @@ public class LegacyCookieValidation implements CookieValidation {
             List<BookieId> addresses, boolean allowExpansion)
             throws BookieException {
         Versioned<Cookie> rmCookie = null;
+        //遍历所有bookie
         for (BookieId address : addresses) {
             try {
+                //从注册管理器读取该bookie节点的cookie
                 rmCookie = Cookie.readFromRegistrationManager(rm, address);
+                // 如果设置了allowStorageExpansion 选项，我们应该确保新的账本/索引目录集是旧的超集；
+                // 否则，我们将无法通过 cookie 检查
                 // If allowStorageExpansion option is set, we should
                 // make sure that the new set of ledger/index dirs
                 // is a super set of the old; else, we fail the cookie check
                 if (allowExpansion) {
+                    // 如果允许扩容，那么久判断从配置文件中读取的目录集合是否是zk上注册的超集，如果不是会抛异常
                     masterCookie.verifyIsSuperSet(rmCookie.getValue());
                 } else {
+                    // 如果不允许扩容，那么久判断从配置文件中读取的目录集合是否等于zk上注册的集合，如果不是会抛异常
                     masterCookie.verify(rmCookie.getValue());
                 }
             } catch (BookieException.CookieNotFoundException e) {

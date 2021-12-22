@@ -72,29 +72,43 @@ public class ExpandStorageService implements HttpEndpointService {
 
         //如果是PUT类型的请求
         if (HttpServer.Method.PUT == request.getMethod()) {
+            // 获取当前的ledger目录，对应配置：ledgerDirectories
             File[] ledgerDirectories = BookieImpl.getCurrentDirectories(conf.getLedgerDirs());
+            //  获取当前的journal目录，对应配置：journalDirectories
             File[] journalDirectories = BookieImpl.getCurrentDirectories(conf.getJournalDirs());
+            // index目录，对应配置：indexDirectories
             File[] indexDirectories;
             if (null == conf.getIndexDirs()) {
+                //如果没有设置index 目录，那么久直接复用ledger目录
                 indexDirectories = ledgerDirectories;
             } else {
+                //否则的话，就获取index目录
                 indexDirectories = BookieImpl.getCurrentDirectories(conf.getIndexDirs());
             }
 
+            //所有的ledger目录集合，这个集合会把ledger和index目录都包含进去
             List<File> allLedgerDirs = Lists.newArrayList();
             allLedgerDirs.addAll(Arrays.asList(ledgerDirectories));
             if (indexDirectories != ledgerDirectories) {
                 allLedgerDirs.addAll(Arrays.asList(indexDirectories));
             }
 
+            // 这里的try(){}catch(){}写法是jdk1.7后引入的，主要是为了方便IO流资源的释放
+            // 该语句确保了每个资源,在语句结束时关闭。所谓的资源是指在程序完成后，必须关闭的流对象。
+            //写在()里面的流对象对应的类都实现了自动关闭接口AutoCloseable；
+            // try (创建流对象语句，如果多个,使用';'隔开){}catch(Exception e){}
             try (MetadataBookieDriver driver = MetadataDrivers.getBookieDriver(
                          URI.create(conf.getMetadataServiceUri()))) {
                 driver.initialize(conf, NullStatsLogger.INSTANCE);
 
                 try (RegistrationManager registrationManager = driver.createRegistrationManager()) {
+                    // 旧版 Cookie 验证
                     LegacyCookieValidation validation = new LegacyCookieValidation(conf, registrationManager);
+                    // 获取当前config中的journal目录
                     List<File> dirs = Lists.newArrayList(journalDirectories);
+                    // 全部加入目录集合dirs中
                     dirs.addAll(allLedgerDirs);
+                    //验证所有目录结构的cookie
                     validation.checkCookies(dirs);
                 }
             } catch (BookieException e) {

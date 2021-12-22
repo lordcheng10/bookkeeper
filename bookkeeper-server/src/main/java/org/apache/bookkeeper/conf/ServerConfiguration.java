@@ -168,6 +168,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     protected static final String JOURNAL_DIRS = "journalDirectories";
     protected static final String LEDGER_DIRS = "ledgerDirectories";
     protected static final String INDEX_DIRS = "indexDirectories";
+    //看是否允许扩容
     protected static final String ALLOW_STORAGE_EXPANSION = "allowStorageExpansion";
     // NIO and Netty Parameters
     protected static final String SERVER_TCP_NODELAY = "serverTcpNoDelay";
