@@ -41,7 +41,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  *
- * 处理 Bookkeeper 的 HttpEndpointService 扩展存储相关的 http 请求。 PUT 方法将扩展这个 bookie 的存储。 在运行命令之前，用户应该使用新的空分类帐/索引目录更新 conf 文件中的目录信息。
+ * 处理 Bookkeeper 的 HttpEndpointService 扩展存储相关的 http 请求。 PUT 方法将扩展这个 bookie 的存储。
+ * 在运行命令之前，用户应该使用新的空分类帐/索引目录更新 conf 文件中的目录信息。
  * HttpEndpointService that handle Bookkeeper expand storage related http request.
  * The PUT method will expand this bookie's storage.
  * User should update the directories info in the conf file with new empty ledger/index
@@ -58,7 +59,10 @@ public class ExpandStorageService implements HttpEndpointService {
         this.conf = conf;
     }
 
-    /*
+    /**
+     * 添加新的空分类帐/索引目录。
+     * 在运行命令之前更新 conf 文件中的目录信息。
+     *
      * Add new empty ledger/index directories.
      * Update the directories info in the conf file before running the command.
      */
@@ -66,6 +70,7 @@ public class ExpandStorageService implements HttpEndpointService {
     public HttpServiceResponse handle(HttpServiceRequest request) throws Exception {
         HttpServiceResponse response = new HttpServiceResponse();
 
+        //如果是PUT类型的请求
         if (HttpServer.Method.PUT == request.getMethod()) {
             File[] ledgerDirectories = BookieImpl.getCurrentDirectories(conf.getLedgerDirs());
             File[] journalDirectories = BookieImpl.getCurrentDirectories(conf.getJournalDirs());
@@ -105,6 +110,7 @@ public class ExpandStorageService implements HttpEndpointService {
             response.setCode(HttpServer.StatusCode.OK);
             return response;
         } else {
+            //如果不是PUT类型的请求，就一律报错
             response.setCode(HttpServer.StatusCode.NOT_FOUND);
             response.setBody("Not found method. Should be PUT method");
             return response;
