@@ -310,6 +310,8 @@ public class GarbageCollectorThread extends SafeRunnable {
         }
     }
 
+    // minor :次要的
+    //major：主要的
     public void resumeMinorGC() {
         if (suspendMinorCompaction.compareAndSet(true, false)) {
             LOG.info("{} Minor Compaction back to normal since bookie has enough space now.",
@@ -344,6 +346,7 @@ public class GarbageCollectorThread extends SafeRunnable {
         if (force) {
             LOG.info("Garbage collector thread forced to perform GC before expiry of wait time.");
         }
+        // 如果使用事务压缩，则恢复和清理以前的状态
         // Recover and clean up previous state if using transactional compaction
         compactor.cleanUpAndRecover();
 

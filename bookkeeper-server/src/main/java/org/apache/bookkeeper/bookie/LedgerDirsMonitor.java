@@ -54,9 +54,13 @@ class LedgerDirsMonitor {
     private final ServerConfiguration conf;
     // 用于磁盘检查的工具类
     private final DiskChecker diskChecker;
+    // ledger目录管理器列表
     private final List<LedgerDirsManager> dirsManagers;
+    // 高优先级写入的最小可用大小
     private long minUsableSizeForHighPriorityWrites;
+    // 执行的线程池
     private ScheduledExecutorService executor;
+    // 检查任务
     private ScheduledFuture<?> checkTask;
 
     public LedgerDirsMonitor(final ServerConfiguration conf,
@@ -64,16 +68,23 @@ class LedgerDirsMonitor {
                              final List<LedgerDirsManager> dirsManagers) {
         // 磁盘检查周期：diskCheckInterval 默认是10 s
         this.interval = conf.getDiskCheckInterval();
+        // 最小可用的磁盘大小，默认是单文件size的1.2倍，比如文件设置1G，那么这里就是1.2G
         this.minUsableSizeForHighPriorityWrites = conf.getMinUsableSizeForHighPriorityWrites();
+        // 配置
         this.conf = conf;
+        // 磁盘检查器
         this.diskChecker = diskChecker;
+        //  目录管理器列表
         this.dirsManagers = dirsManagers;
     }
 
     private void check(final LedgerDirsManager ldm) {
+        // 获取各个文件所对应的磁盘使用率map： key是文件，value是使用率
         final ConcurrentMap<File, Float> diskUsages = ldm.getDiskUsages();
         try {
+            // 可写的目录文件
             List<File> writableDirs = ldm.getWritableLedgerDirs();
+            // 检查所有可写目录的磁盘空间使用率
             // Check all writable dirs disk space usage.
             for (File dir : writableDirs) {
                 try {

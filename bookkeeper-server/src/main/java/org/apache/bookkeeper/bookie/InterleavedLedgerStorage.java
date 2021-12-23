@@ -208,8 +208,10 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
             @Override
             public void diskAlmostFull(File disk) {
                 if (gcThread.isForceGCAllowWhenNoSpace) {
+                    // 当要满了的话，立马强制触发一次
                     gcThread.enableForceGC();
                 } else {
+                    // 否则就暂停major gc ,因为compact要卡主，所以暂停了为了更快的删除可以删除的完整文件
                     gcThread.suspendMajorGC();
                 }
             }
@@ -217,13 +219,16 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
             @Override
             public void diskFull(File disk) {
                 if (gcThread.isForceGCAllowWhenNoSpace) {
+                    // 当满了的话，立马强制触发一次
                     gcThread.enableForceGC();
                 } else {
+                    // 暂停major gc和minor gc
                     gcThread.suspendMajorGC();
                     gcThread.suspendMinorGC();
                 }
             }
 
+            // 所有磁盘都满了
             @Override
             public void allDisksFull(boolean highPriorityWritesAllowed) {
                 if (gcThread.isForceGCAllowWhenNoSpace) {
@@ -234,25 +239,31 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
                 }
             }
 
+            // 磁盘可写的时候，也就是有足够空间的时候，触发的回调
             @Override
             public void diskWritable(File disk) {
                 // we have enough space now
                 if (gcThread.isForceGCAllowWhenNoSpace) {
+                    // 关闭强制gc
                     // disable force gc.
                     gcThread.disableForceGC();
                 } else {
+                    // 唤醒compact，有可能在触发唤醒前，磁盘就不可写了
                     // resume compaction to normal.
                     gcThread.resumeMajorGC();
                     gcThread.resumeMinorGC();
                 }
             }
 
+            // 磁盘刚刚可写触发的回调。
             @Override
             public void diskJustWritable(File disk) {
                 if (gcThread.isForceGCAllowWhenNoSpace) {
+                    // 如果刚刚才可写，那么久还要再触发一次强制清理
                     // if a disk is just writable, we still need force gc.
                     gcThread.enableForceGC();
                 } else {
+                    // 如果没有开启强制清理，就只唤醒minor gc，防止被卡主
                     // still under warn threshold, only resume minor compaction.
                     gcThread.resumeMinorGC();
                 }

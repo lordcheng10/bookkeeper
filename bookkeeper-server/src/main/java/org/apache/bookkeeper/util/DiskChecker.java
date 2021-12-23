@@ -245,8 +245,9 @@ public class DiskChecker {
         long totalDiskSpace = 0;
         Set<FileStore> dirsFileStore = new HashSet<FileStore>();
         for (File dir : dirs) {
+            // 同样的获取该目录对应的存储对象
             FileStore fileStore = Files.getFileStore(dir.toPath());
-            if (dirsFileStore.add(fileStore)) {
+            if (dirsFileStore.add(fileStore)) {//如果已经存在了，add会失败，并返回false
                 totalDiskSpace += fileStore.getTotalSpace();
             }
         }
@@ -254,6 +255,7 @@ public class DiskChecker {
     }
 
     /**
+     * 这里其实就是计算目录对应的磁盘，总的使用率
      * calculates and returns the disk usage factor in the provided list of dirs.
      *
      * @param dirs
@@ -266,16 +268,25 @@ public class DiskChecker {
             throw new IllegalArgumentException(
                     "list argument of getTotalDiskUsage is not supposed to be null or empty");
         }
+        // 总的使用空间大小/总的磁盘空间大小
         float free = (float) getTotalFreeSpace(dirs) / (float) getTotalDiskSpace(dirs);
         float used = 1f - free;
         return used;
     }
 
     /**
+     * 如果目录不存在，则创建该目录。
+     *
      * Create the directory if it doesn't exist.
+     *
+     * dir : 检查磁盘是否满所对应的目录
      *
      * @param dir
      *            Directory to check for the disk error/full.
+     * 如果磁盘有错误，就抛DiskErrorException；
+     * 如果磁盘的可用空间少于配置的数量，就抛DiskWarnThresholdException；
+     * 如果磁盘满了或小于阈值的空间，那么久抛DiskOutOfSpaceException异常
+     *
      * @throws DiskErrorException
      *             If disk having errors
      * @throws DiskWarnThresholdException
@@ -285,34 +296,42 @@ public class DiskChecker {
      */
     public float checkDir(File dir) throws DiskErrorException,
             DiskOutOfSpaceException, DiskWarnThresholdException {
+        // 检查该目录所在磁盘是否满了，返回的usage是磁盘空间使用率
         float usage = checkDiskFull(dir);
+        // 检查是否存在，不存在就创建目录
         if (!mkdirsWithExistsCheck(dir)) {
             throw new DiskErrorException("can not create directory: "
                     + dir.toString());
         }
 
+        // 如果dir不是目录，那么久抛磁盘错误异常
         if (!dir.isDirectory()) {
             throw new DiskErrorException("not a directory: " + dir.toString());
         }
 
+        // 如果目录不可读:这里看起来只是检查下是否有可读权限
         if (!dir.canRead()) {
             throw new DiskErrorException("directory is not readable: "
                     + dir.toString());
         }
 
+        // 检查下是否有可写权限
         if (!dir.canWrite()) {
             throw new DiskErrorException("directory is not writable: "
                     + dir.toString());
         }
+        //返回该目录对应磁盘的使用率
         return usage;
     }
 
     /**
+     * 设置磁盘空间阈值。
      * Set the disk space threshold.
      *
      * @param diskSpaceThreshold
      */
     void setDiskSpaceThreshold(float diskSpaceThreshold, float diskUsageWarnThreshold) {
+        // 校验阈值是否合法
         validateThreshold(diskSpaceThreshold, diskUsageWarnThreshold);
         this.diskUsageThreshold = diskSpaceThreshold;
         this.diskUsageWarnThreshold = diskUsageWarnThreshold;

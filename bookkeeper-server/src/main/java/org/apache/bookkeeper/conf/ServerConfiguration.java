@@ -3312,6 +3312,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取账本目录中可供 Bookie 创建条目日志文件的最小安全可用大小:默认是1.2倍单文件大小
      * Gets the minimum safe usable size to be available in ledger directory for Bookie to create entry log files.
      *
      * @return minimum safe usable size to be available in ledger directory for entry log file creation.

@@ -26,6 +26,7 @@ import java.util.function.LongPredicate;
 import org.apache.bookkeeper.util.collections.ConcurrentLongLongHashMap;
 
 /**
+ * 记录总大小、剩余大小和组成条目日志的分类帐集。
  * Records the total size, remaining size and the set of ledgers that comprise a entry log.
  */
 public class EntryLogMetadata {

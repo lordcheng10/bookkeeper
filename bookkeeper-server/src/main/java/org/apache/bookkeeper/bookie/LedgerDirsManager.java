@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 这个类管理 bookie 使用的分类帐目录。
  * This class manages ledger directories used by the bookie.
  */
 public class LedgerDirsManager {
