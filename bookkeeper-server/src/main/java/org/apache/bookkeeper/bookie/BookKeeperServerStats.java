@@ -145,6 +145,7 @@ public interface BookKeeperServerStats {
     String LEDGER_CACHE_HIT = "LEDGER_CACHE_HIT";
     String LEDGER_CACHE_MISS = "LEDGER_CACHE_MISS";
 
+    // 数据清理的metric
     // Compaction/Garbage Collection Related Counters
     String ACTIVE_ENTRY_LOG_COUNT = "ACTIVE_ENTRY_LOG_COUNT";
     String ACTIVE_ENTRY_LOG_SPACE_BYTES = "ACTIVE_ENTRY_LOG_SPACE_BYTES";

@@ -361,6 +361,7 @@ public class Main {
                                         bookieStats, allocator,
                                         bookieServiceInfoProvider);
         } else {
+            // 启动bookie服务
             bookie = new BookieImpl(conf.getServerConf(), rm, storage,
                                     diskChecker,
                                     ledgerDirsManager, indexDirsManager,

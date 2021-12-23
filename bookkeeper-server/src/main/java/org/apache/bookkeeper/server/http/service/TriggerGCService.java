@@ -61,8 +61,10 @@ public class TriggerGCService implements HttpEndpointService {
         HttpServiceResponse response = new HttpServiceResponse();
 
         if (HttpServer.Method.PUT == request.getMethod()) {
+            // 如果是PUT方法，那么会强制触发GC
             bookieServer.getBookie().getLedgerStorage().forceGC();
 
+            //回response
             String output = "Triggered GC on BookieServer: " + bookieServer.toString();
             String jsonResponse = JsonUtil.toJson(output);
             if (LOG.isDebugEnabled()) {
@@ -72,6 +74,7 @@ public class TriggerGCService implements HttpEndpointService {
             response.setCode(HttpServer.StatusCode.OK);
             return response;
         } else if (HttpServer.Method.GET == request.getMethod()) {
+            //如果是GET请求，那么会获取当前的状态，看看是否是开启了强制GC
             Boolean isInForceGC = bookieServer.getBookie().getLedgerStorage().isInForceGC();
             Pair<String, String> output = Pair.of("is_in_force_gc", isInForceGC.toString());
             String jsonResponse = JsonUtil.toJson(output);

@@ -190,9 +190,13 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     //Whether to persist the bookie status
     protected static final String PERSIST_BOOKIE_STATUS_ENABLED = "persistBookieStatusEnabled";
     //Disk utilization
+    // 磁盘满的使用率，默认是95% 超过就会报错，表示已经满了
     protected static final String DISK_USAGE_THRESHOLD = "diskUsageThreshold";
+    // 磁盘使用率过高，发出警告的阈值，默认是90%
     protected static final String DISK_USAGE_WARN_THRESHOLD = "diskUsageWarnThreshold";
+    // 磁盘使用 Lwm 阈值，这个用来标记是否可用，默认值是直接是用DISK_USAGE_THRESHOLD的值来设置
     protected static final String DISK_USAGE_LWM_THRESHOLD = "diskUsageLwmThreshold";
+    // 磁盘检查周期
     protected static final String DISK_CHECK_INTERVAL = "diskCheckInterval";
 
     // Replication parameters
@@ -1039,6 +1043,8 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取 bookie 应该侦听连接的网络接口。 如果这是 null，则 bookie 将侦听所有接口上的连接。
+     *
      * Get the network interface that the bookie should
      * listen for connections on. If this is null, then the bookie
      * will listen for connections on all interfaces.
@@ -1097,14 +1103,16 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
      /**
+      * 获取为 bookie 配置的 BookieId。
      * Get the configured BookieId for the bookie.
      *
+      * 如果存在，此设置将优先于基于网络地址的自动 BookieId 生成。
      * <p>If present, this setting will take precedence over the
      * automatic BookieId generation, based on Network Addresses.
      *
      * @see #setBookieId(java.lang.String)
      * @see #getAdvertisedAddress()
-     * @return the configure address to be advertised
+     * @return the configure address to be advertised 要通告的配置地址
      */
     public String getBookieId() {
         return this.getString(BOOKIE_ID, null);
@@ -2412,9 +2420,11 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 返回磁盘可用空间低水位线阈值。 默认情况下，它与使用阈值相同（为了向后兼容）。
      * Returns disk free space low water mark threshold. By default it is the
      * same as usage threshold (for backwards-compatibility).
      *
+     * 低于该百分比的磁盘将不被视为已满
      * @return the percentage below which a disk will NOT be considered full
      */
     public float getDiskLowWaterMarkUsageThreshold() {
@@ -2422,6 +2432,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 设置磁盘检查器间隔以监视分类帐磁盘空间。
      * Set the disk checker interval to monitor ledger disk space.
      *
      * @param interval interval between disk checks for space.
@@ -2434,6 +2445,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取磁盘检查器间隔。默认是10秒
      * Get the disk checker interval.
      *
      * @return int
@@ -2867,8 +2879,12 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取 bookie 是否使用主机名进行注册和分类帐元数据，默认为 false。
+     *
      * Get whether bookie is using hostname for registration and in ledger
      * metadata. Defaults to false.
+     *
+     * @return true，那么 bookie 将使用其主机名注册，主机名将用于分类帐元数据。 否则 bookie 将使用其 ipaddress
      *
      * @return true, then bookie will be registered with its hostname and
      *         hostname will be used in ledger metadata. Otherwise bookie will
@@ -3321,6 +3337,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取账本目录中可供 Bookie 接受高优先级写入的最小安全可用大小。
      * Gets the minimum safe usable size to be available in ledger directory for Bookie to accept high priority writes.
      *
      * <p>If not set, it is the value of {@link #getMinUsableSizeForEntryLogCreation()}.

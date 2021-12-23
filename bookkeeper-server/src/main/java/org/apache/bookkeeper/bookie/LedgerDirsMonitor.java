@@ -43,13 +43,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 线程定期监视磁盘空间。
  * Thread to monitor the disk space periodically.
  */
 class LedgerDirsMonitor {
     private static final Logger LOG = LoggerFactory.getLogger(LedgerDirsMonitor.class);
-
+    //检查周期，对应配置diskCheckInterval，默认值是10秒
     private final int interval;
+    // 配置
     private final ServerConfiguration conf;
+    // 用于磁盘检查的工具类
     private final DiskChecker diskChecker;
     private final List<LedgerDirsManager> dirsManagers;
     private long minUsableSizeForHighPriorityWrites;
@@ -59,6 +62,7 @@ class LedgerDirsMonitor {
     public LedgerDirsMonitor(final ServerConfiguration conf,
                              final DiskChecker diskChecker,
                              final List<LedgerDirsManager> dirsManagers) {
+        // 磁盘检查周期：diskCheckInterval 默认是10 s
         this.interval = conf.getDiskCheckInterval();
         this.minUsableSizeForHighPriorityWrites = conf.getMinUsableSizeForHighPriorityWrites();
         this.conf = conf;
@@ -130,6 +134,7 @@ class LedgerDirsMonitor {
         try {
             if (!makeWritable) {
                 float totalDiskUsage = diskChecker.getTotalDiskUsage(ldm.getAllLedgerDirs());
+                // 当总的磁盘使用率小于可用的磁盘使用率时，那么就标记makeWritable是可写的
                 if (totalDiskUsage < conf.getDiskLowWaterMarkUsageThreshold()) {
                     makeWritable = true;
                 } else {

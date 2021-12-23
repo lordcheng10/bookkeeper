@@ -49,6 +49,8 @@ public interface RegistrationManager extends AutoCloseable {
     void close();
 
     /**
+     *
+     * 看起来instanceId是集群维度的
      * Return the cluster instance id.
      *
      * @return the cluster instance id.

@@ -55,9 +55,12 @@ public abstract class HttpRouter<Handler> {
     public static final String LAST_LOG_MARK                = "/api/v1/bookie/last_log_mark";
     // 获取对应的存储文件
     public static final String LIST_DISK_FILE               = "/api/v1/bookie/list_disk_file";
-    // 获取扩展存储
+    // 获取扩展存储,配置文件中，新增了磁盘目录后，重新启动后回将配置文件中的目录重新写到zk上。当然会校验下
     public static final String EXPAND_STORAGE               = "/api/v1/bookie/expand_storage";
+
+    // 强制触发GC
     public static final String GC                           = "/api/v1/bookie/gc";
+
     public static final String GC_DETAILS                   = "/api/v1/bookie/gc_details";
     public static final String BOOKIE_STATE                 = "/api/v1/bookie/state";
     public static final String BOOKIE_IS_READY              = "/api/v1/bookie/is_ready";

@@ -118,20 +118,26 @@ public class Cookie {
 
     private boolean verifyLedgerDirs(Cookie c, boolean checkIfSuperSet) {
         if (!checkIfSuperSet) {
+            //如果不是允许超集，包含关系，那么久ledgerDir必须相等
             return ledgerDirs.equals(c.ledgerDirs);
         } else {
+            //否则需要传入的是当前从config配置文件中读取的子集
             return isSuperSet(decodeDirPathFromCookie(ledgerDirs), decodeDirPathFromCookie(c.ledgerDirs));
         }
     }
 
+    // 这里的cookie c是，
     private void verifyInternal(Cookie c, boolean checkIfSuperSet) throws BookieException.InvalidCookieException {
         String errMsg;
+        //比较版本号，如果版本号不匹配，那么久抛异常
         if (c.layoutVersion < 3 && c.layoutVersion != layoutVersion) {
+            // 如果版本不匹配，就直接抛异常
             errMsg = "Cookie is of too old version " + c.layoutVersion;
             LOG.error(errMsg);
             throw new BookieException.InvalidCookieException(errMsg);
         } else if (!(c.layoutVersion >= 3 && c.bookieId.equals(bookieId)
             && c.journalDirs.equals(journalDirs) && verifyLedgerDirs(c, checkIfSuperSet))) {
+            // 检查bookieId，需要相等，然后对应的目录相等
             errMsg = "Cookie [" + this + "] is not matching with [" + c + "]";
             throw new BookieException.InvalidCookieException(errMsg);
         } else if ((instanceId == null && c.instanceId != null)
@@ -147,6 +153,7 @@ public class Cookie {
         verifyInternal(c, false);
     }
 
+    //c: 是注册器传入的cookie
     public void verifyIsSuperSet(Cookie c) throws BookieException.InvalidCookieException {
         verifyInternal(c, true);
     }
@@ -283,6 +290,7 @@ public class Cookie {
     }
 
     /**
+     * 从给定的配置生成 cookie。
      * Generate cookie from the given configuration.
      *
      * @param conf configuration
@@ -292,9 +300,13 @@ public class Cookie {
     static Builder generateCookie(ServerConfiguration conf)
             throws UnknownHostException {
         Builder builder = Cookie.newBuilder();
+        // 设置布局版本
         builder.setLayoutVersion(CURRENT_COOKIE_LAYOUT_VERSION);
+        // 设置bookieID
         builder.setBookieId(BookieImpl.getBookieId(conf).toString());
+        // 设置jounal目录
         builder.setJournalDirs(Joiner.on(',').join(conf.getJournalDirNames()));
+        // 设置ledger目录
         builder.setLedgerDirs(encodeDirPaths(conf.getLedgerDirNames()));
         return builder;
     }

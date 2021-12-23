@@ -32,16 +32,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 提供用于检查磁盘问题的实用功能的类。
  * Class that provides utility functions for checking disk problems.
  */
 public class DiskChecker {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiskChecker.class);
-
+    // 磁盘使用阈值，超过就表示满了
     private float diskUsageThreshold;
+    // 磁盘使用率 告警阈值
     private float diskUsageWarnThreshold;
 
     /**
+     * 磁盘相关异常的通用标记。
      * A general marker for disk-related exceptions.
      */
     public abstract static class DiskException extends IOException {
@@ -51,6 +54,7 @@ public class DiskChecker {
     }
 
     /**
+     * 磁盘错误异常。
      * A disk error exception.
      */
     public static class DiskErrorException extends DiskException {
@@ -62,6 +66,7 @@ public class DiskChecker {
     }
 
     /**
+     * 磁盘空间不足异常。
      * An out-of-space disk exception.
      */
     public static class DiskOutOfSpaceException extends DiskException {
@@ -80,6 +85,7 @@ public class DiskChecker {
     }
 
     /**
+     * 磁盘警告阈值异常。
      * A disk warn threshold exception.
      */
     public static class DiskWarnThresholdException extends DiskException {
@@ -97,13 +103,23 @@ public class DiskChecker {
         }
     }
 
+    // 传入磁盘满阈值threshold，默认是95%；磁盘使用率告警阈值warnThreshold，默认是90%
     public DiskChecker(float threshold, float warnThreshold) {
+        // 检查磁盘的两个阈值是否合理
         validateThreshold(threshold, warnThreshold);
+        // 磁盘使用率
         this.diskUsageThreshold = threshold;
+        // 磁盘预警使用率
         this.diskUsageWarnThreshold = warnThreshold;
     }
 
     /**
+     *
+     * mkdirsWithExistsCheck 方法的语义与 Sun 的 java.io.File 类中提供的 mkdirs 方法的不同之处如下： 在创建不存在的父目录时，
+     * 如果 mkdir 在任何情况下失败，此方法将检查这些目录是否存在 点（因为该目录可能刚刚由其他某个进程创建）。
+     * 如果 mkdir() 和 exists() 检查对于任何看似不存在的目录都失败，那么我们会发出错误信号；
+     * 如果 Sun 的 mkdir 尝试创建的目录已经存在或 mkdir 失败，则会发出错误信号（返回 false）。
+     *
      * The semantics of mkdirsWithExistsCheck method is different from the
      * mkdirs method provided in the Sun's java.io.File class in the following
      * way: While creating the non-existent parent directories, this method
@@ -118,9 +134,13 @@ public class DiskChecker {
      * @return true on success, false on failure
      */
     private static boolean mkdirsWithExistsCheck(File dir) {
+        // 如果目录创建成功或目录存在，那么直接返回true
         if (dir.mkdir() || dir.exists()) {
             return true;
         }
+        // 如果走到这里，那么就是创建目录失败并且目录还不存在，那么有可能是因为给定的文件路径不规范导致的，
+        //下面我们就通过getCanonicalFile方法来进行规范化后，再重新执行mkdirsWithExistsCheck。
+        //getCanonicalFile方法会将比如：c:\\users\\..\\program这种不规范的路径，规范成"c:\program
         File canonDir = null;
         try {
             canonDir = dir.getCanonicalFile();
@@ -134,8 +154,12 @@ public class DiskChecker {
     }
 
     /**
+     * 检查可用磁盘空间。
      * Checks the disk space available.
      *
+     * 传入的参数dir是 检查磁盘空间的目录；
+     *
+     * 如果磁盘空间使用率小于给定的阈值(默认是95%)，那么久会抛DiskOutOfSpaceException
      * @param dir
      *            Directory to check for the disk space
      * @throws DiskOutOfSpaceException
@@ -144,20 +168,28 @@ public class DiskChecker {
      */
     @VisibleForTesting
     float checkDiskFull(File dir) throws DiskOutOfSpaceException, DiskWarnThresholdException {
+        // 如果给定的目录为null，那么久直接返回0
         if (null == dir) {
             return 0f;
         }
         if (dir.exists()) {
+            // 如果给定的目录存在，那么久检查该目录，否则就再次调用该方法，检查上一级目录
+            // 获取该目录所在磁盘的剩余空间大小，单位是字节,可用空间大小
             long usableSpace = dir.getUsableSpace();
+            // 目录所在磁盘总的空间大小
             long totalSpace = dir.getTotalSpace();
+            // 空闲率
             float free = (float) usableSpace / (float) totalSpace;
+            // 使用率
             float used = 1f - free;
+            // 如果使用率大于磁盘使用率阈值(默认是0.95)，那么就会直接抛异常，并且这种异常我们认为是error级别
             if (used > diskUsageThreshold) {
                 LOG.error("Space left on device {} : {}, Used space fraction: {} > threshold {}.",
                         dir, usableSpace, used, diskUsageThreshold);
                 throw new DiskOutOfSpaceException("Space left on device "
                         + usableSpace + " Used space fraction:" + used + " > threshold " + diskUsageThreshold, used);
             }
+            //如果使用率超过warn级别，默认是0.9,那么也会抛异常，但这种异常我们认为是warn级别
             // Warn should be triggered only if disk usage threshold doesn't trigger first.
             if (used > diskUsageWarnThreshold) {
                 LOG.warn("Space left on device {} : {}, Used space fraction: {} > WarnThreshold {}.",
@@ -166,14 +198,18 @@ public class DiskChecker {
                         + usableSpace + " Used space fraction:" + used + " > WarnThreshold:" + diskUsageWarnThreshold,
                         used);
             }
+            //最后返回该目录当前使用率
             return used;
         } else {
+            // 递归调用上一级目录
             return checkDiskFull(dir.getParentFile());
         }
     }
 
 
     /**
+     * 计算放在一起的所有分类帐目录中可用的可用空间总量。
+     *
      * Calculate the total amount of free space available
      * in all of the ledger directories put together.
      *
@@ -183,8 +219,12 @@ public class DiskChecker {
     public long getTotalFreeSpace(List<File> dirs) throws IOException {
         long totalFreeSpace = 0;
         Set<FileStore> dirsFileStore = new HashSet<FileStore>();
+        // 变能力每个目录
         for (File dir : dirs) {
+            // getFileStore应该是根据目录来获取对应的磁盘存储
             FileStore fileStore = Files.getFileStore(dir.toPath());
+            // 如果dirsFileStore中不存在fileStore，那么就add成功，并返回true，否则false，
+            //这样如果我们在同一块盘配置了多个目录，总的可用磁盘空间容量也不会算重
             if (dirsFileStore.add(fileStore)) {
                 totalFreeSpace += fileStore.getUsableSpace();
             }
@@ -193,6 +233,8 @@ public class DiskChecker {
     }
 
     /**
+     *
+     * 计算放在一起的所有分类帐目录中可用的可用空间总量。
      * Calculate the total amount of free space available
      * in all of the ledger directories put together.
      *
@@ -276,6 +318,7 @@ public class DiskChecker {
         this.diskUsageWarnThreshold = diskUsageWarnThreshold;
     }
 
+    // diskSpaceThreshold应该大于1，并且diskSpaceWarnThreshold应该小于等于diskSpaceThreshold
     private void validateThreshold(float diskSpaceThreshold, float diskSpaceWarnThreshold) {
         if (diskSpaceThreshold <= 0 || diskSpaceThreshold >= 1 || diskSpaceWarnThreshold - diskSpaceThreshold > 1e-6) {
             throw new IllegalArgumentException("Disk space threashold: "

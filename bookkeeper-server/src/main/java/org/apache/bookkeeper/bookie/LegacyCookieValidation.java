@@ -58,16 +58,18 @@ public class LegacyCookieValidation implements CookieValidation {
     @Override
     public void checkCookies(List<File> directories) throws BookieException {
         try {
-            //  检索实例 ID
+            //  集群ID，这个代表了一个集群的唯一编号
             // 1. retrieve the instance id
             String instanceId = registrationManager.getClusterInstanceId();
 
             // 构建master cookie从配置文件中
             // 2. build the master cookie from the configuration
             Cookie.Builder builder = Cookie.generateCookie(conf);
+            // 如果instanceId不为null，那么设置下instanceId
             if (null != instanceId) {
                 builder.setInstanceId(instanceId);
             }
+            //生成cookie
             Cookie masterCookie = builder.build();
             // 判断是否允许扩容
             boolean allowExpansion = conf.getAllowStorageExpansion();
@@ -79,6 +81,7 @@ public class LegacyCookieValidation implements CookieValidation {
             //    an old bookie.
             List<BookieId> possibleBookieIds = possibleBookieIds(conf);
             // 从注册管理器读取并验证 Cookie，这里的rmCookie，rm代表的是register manager，注册管理器的缩写
+            // 这里会验证注册到zk上的cookie是否是conf中读出的cookie的子集
             final Versioned<Cookie> rmCookie = readAndVerifyCookieFromRegistrationManager(
                     masterCookie, registrationManager, possibleBookieIds, allowExpansion);
 
@@ -138,12 +141,14 @@ public class LegacyCookieValidation implements CookieValidation {
 
     private static List<BookieId> possibleBookieIds(ServerConfiguration conf)
             throws BookieException {
+        // 我们需要遍历所有可能的 bookie 标识符，以确保仅仅因为配置错误而将其视为新环境
         // we need to loop through all possible bookie identifiers to ensure it is treated as a new environment
         // just because of bad configuration
         List<BookieId> addresses = Lists.newArrayListWithExpectedSize(3);
         // we are checking all possibilities here, so we don't need to fail if we can only get
         // loopback address. it will fail anyway when the bookie attempts to listen on loopback address.
         try {
+            // 用ip地址来生成的bookie id
             // ip address
             addresses.add(BookieImpl.getBookieAddress(
                     new ServerConfiguration(conf)
@@ -151,6 +156,7 @@ public class LegacyCookieValidation implements CookieValidation {
                             .setAdvertisedAddress(null)
                             .setAllowLoopback(true)
             ).toBookieId());
+            // 主机名
             // host name
             addresses.add(BookieImpl.getBookieAddress(
                     new ServerConfiguration(conf)
@@ -158,6 +164,7 @@ public class LegacyCookieValidation implements CookieValidation {
                             .setAdvertisedAddress(null)
                             .setAllowLoopback(true)
             ).toBookieId());
+            // advertised地址
             // advertised address
             if (null != conf.getAdvertisedAddress()) {
                 addresses.add(BookieImpl.getBookieId(conf));
@@ -173,7 +180,7 @@ public class LegacyCookieValidation implements CookieValidation {
             List<BookieId> addresses, boolean allowExpansion)
             throws BookieException {
         Versioned<Cookie> rmCookie = null;
-        //遍历所有bookie
+        //遍历当前bookie，所有可能的bookieId
         for (BookieId address : addresses) {
             try {
                 //从注册管理器读取该bookie节点的cookie
@@ -244,6 +251,7 @@ public class LegacyCookieValidation implements CookieValidation {
         for (File dir : dirs) {
             masterCookie.writeToDirectory(dir);
         }
+        // 校验通过后，最终会把配置文件读取的新增目录写到cookie中
         masterCookie.writeToRegistrationManager(rm, conf, version);
     }
 

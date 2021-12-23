@@ -106,6 +106,7 @@ public class BookieImpl extends BookieCriticalThread implements Bookie {
     private final LedgerDirsManager ledgerDirsManager;
     protected final Supplier<BookieServiceInfo> bookieServiceInfoProvider;
     private final LedgerDirsManager indexDirsManager;
+    // ledger目录监控器
     LedgerDirsMonitor dirsMonitor;
 
     private int exitCode = ExitCode.OK;
@@ -236,51 +237,66 @@ public class BookieImpl extends BookieCriticalThread implements Bookie {
     }
 
     public static BookieId getBookieId(ServerConfiguration conf) throws UnknownHostException {
+        //如果用户设置了bookie id，那么久用用户给定的
         String customBookieId = conf.getBookieId();
         if (customBookieId != null) {
             return BookieId.parse(customBookieId);
         }
+        //否则就基于地址来生成: hostname + COLON + port的方式
         return getBookieAddress(conf).toBookieId();
     }
 
     /**
+     * 返回 bookie 的配置地址。
      * Return the configured address of the bookie.
      */
     public static BookieSocketAddress getBookieAddress(ServerConfiguration conf)
             throws UnknownHostException {
+        // Advertised地址优先于监听接口和 useHostNameAsBookieID 设置
         // Advertised address takes precedence over the listening interface and the
         // useHostNameAsBookieID settings
         if (conf.getAdvertisedAddress() != null && conf.getAdvertisedAddress().trim().length() > 0) {
+            //如果配置了advertisedAddress，那么就以advertisedAddress为准
             String hostAddress = conf.getAdvertisedAddress().trim();
             return new BookieSocketAddress(hostAddress, conf.getBookiePort());
         }
 
+        // 监听的接口地址listeningInterface,从设置的值比如eth01，看起来意思是监听的网卡名
         String iface = conf.getListeningInterface();
         if (iface == null) {
             iface = "default";
         }
 
+        // 根据网卡名来获取主机名
         String hostName = DNS.getDefaultHost(iface);
+        // 构建网络地址: host + 端口
         InetSocketAddress inetAddr = new InetSocketAddress(hostName, conf.getBookiePort());
         if (inetAddr.isUnresolved()) {
             throw new UnknownHostException("Unable to resolve default hostname: "
                     + hostName + " for interface: " + iface);
         }
+
         String hostAddress = null;
         InetAddress iAddress = inetAddr.getAddress();
+        //如果配置了useHostNameAsBookieID
         if (conf.getUseHostNameAsBookieID()) {
+            //用hostname来注册
             hostAddress = iAddress.getCanonicalHostName();
+            //如果useShortHostName配置为true，那么就切割hostAddress，使用短主机名
             if (conf.getUseShortHostName()) {
-                /*
+                /**
+                 * 如果使用短主机名，则不使用 FQDN。 短主机名是在第一个点处剪切的主机名。
                  * if short hostname is used, then FQDN is not used. Short
                  * hostname is the hostname cut at the first dot.
                  */
                 hostAddress = hostAddress.split("\\.", 2)[0];
             }
         } else {
+            //如果如果配置了useHostNameAsBookieID没有设置或设置未false，那么久用ip地址
             hostAddress = iAddress.getHostAddress();
         }
 
+        // 构建bookie socket地址
         BookieSocketAddress addr =
                 new BookieSocketAddress(hostAddress, conf.getBookiePort());
         if (addr.getSocketAddress().getAddress().isLoopbackAddress()
@@ -411,6 +427,7 @@ public class BookieImpl extends BookieCriticalThread implements Bookie {
         if (indexDirsManager != ledgerDirsManager) {
             dirsManagers.add(indexDirsManager);
         }
+        // 存储目录监控器
         this.dirsMonitor = new LedgerDirsMonitor(conf, diskChecker, dirsManagers);
         try {
             this.dirsMonitor.init();
@@ -626,6 +643,7 @@ public class BookieImpl extends BookieCriticalThread implements Bookie {
             LOG.debug("I'm starting a bookie with journal directories {}",
                     journalDirectories.stream().map(File::getName).collect(Collectors.joining(", ")));
         }
+        // 启动磁盘检查
         //Start DiskChecker thread
         dirsMonitor.start();
 
