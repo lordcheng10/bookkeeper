@@ -73,6 +73,8 @@ public class GarbageCollectorThread extends SafeRunnable {
     // Compaction parameters
     boolean isForceMinorCompactionAllow = false;
     boolean enableMinorCompaction = false;
+    // minor代表轻微：因为它默认触发的条件是使用率小于等于0.2，才会触发compacttion.触发的条件相对于major来说，要更久一些。所以是轻微,但间隔是1小时;
+    // major代表重大的，因为它的触发条件是0.8，间隔是1天.
     final double minorCompactionThreshold;
     final long minorCompactionInterval;
     final long minorCompactionMaxTimeMillis;
@@ -189,6 +191,7 @@ public class GarbageCollectorThread extends SafeRunnable {
         majorCompactionMaxTimeMillis = conf.getMajorCompactionMaxTimeMillis();
         minorCompactionMaxTimeMillis = conf.getMinorCompactionMaxTimeMillis();
 
+        // 看看是否允许强制compact清理：forceAllowCompaction,默认是false
         boolean isForceAllowCompaction = conf.isForceAllowCompaction();
 
         AbstractLogCompactor.LogRemovalListener remover = new AbstractLogCompactor.LogRemovalListener() {
@@ -217,6 +220,7 @@ public class GarbageCollectorThread extends SafeRunnable {
 
         if (isForceAllowCompaction) {
             if (minorCompactionThreshold > 0 && minorCompactionThreshold < 1.0f) {
+                //只要forceAllowCompaction开启了，并且对应的gc阈值在0~1之间，那么久算开启
                 isForceMinorCompactionAllow = true;
             }
             if (majorCompactionThreshold > 0 && majorCompactionThreshold < 1.0f) {
@@ -233,6 +237,7 @@ public class GarbageCollectorThread extends SafeRunnable {
                 throw new IOException("Too short major compaction interval : "
                                     + majorCompactionInterval);
             }
+            // 如果majorCompactionInterval和majorCompactionThreshold大于0，摈弃majorCompactionThreshold<1 并且majorCompactionInterval>gcWaitTime, 那么就是算开启了compaction清理
             enableMajorCompaction = true;
         }
 
@@ -262,6 +267,7 @@ public class GarbageCollectorThread extends SafeRunnable {
         }
     }
 
+    // 当磁盘使用率超过阈值的时候，会设置为true，当使用率下降后，会重置为false,当然在强制执行完后，也会重置为false
     public void disableForceGC() {
         if (forceGarbageCollection.compareAndSet(true, false)) {
             LOG.info("{} disabled force garbage collection since bookie has enough space now.", Thread
@@ -371,18 +377,26 @@ public class GarbageCollectorThread extends SafeRunnable {
         if (((isForceMajorCompactionAllow && force)
                 || (enableMajorCompaction && (force || curTime - lastMajorCompactionTime > majorCompactionInterval)))
                 && (!suspendMajor)) {
+            //在没有暂停major gc的情况下（suspendMajor=true），下面几种情况会执行major gc：
+            //① 允许强制major清理isForceMajorCompactionAllow=true，并且现在触发了强制force=true,默认是不允许强制执行的isForceMajorCompactionAllow=false;
+            //② 启动了major gc（enableMajorCompaction=true，也就是设置的majorCompactionInterval>0就算开启了），并且满足了majorCompactionInterval周期
             // enter major compaction
             LOG.info("Enter major compaction, suspendMajor {}", suspendMajor);
+            // 正在做major copact，那么久标记true
             majorCompacting.set(true);
             doCompactEntryLogs(majorCompactionThreshold, majorCompactionMaxTimeMillis);
             lastMajorCompactionTime = System.currentTimeMillis();
             // and also move minor compaction time
             lastMinorCompactionTime = lastMajorCompactionTime;
             gcStats.getMajorCompactionCounter().inc();
+            // 完成后，设置未false
             majorCompacting.set(false);
         } else if (((isForceMinorCompactionAllow && force)
                 || (enableMinorCompaction && (force || curTime - lastMinorCompactionTime > minorCompactionInterval)))
                 && (!suspendMinor)) {
+            //在没有暂停minor gc的情况下（suspendMajor=true），下面几种情况会执行minor gc：
+            //① 允许强制minor清理isForceMinorCompactionAllow=true(只要forceAllowCompaction开启了，并且对应的gc阈值在0~1之间，那么久算开启)，并且现在触发了强制force=true,默认是不允许强制执行的isForceMinorCompactionAllow=false;
+            //② 启动了minor gc，并且满足了minorCompactionInterval周期
             // enter minor compaction
             LOG.info("Enter minor compaction, suspendMinor {}", suspendMinor);
             minorCompacting.set(true);
@@ -392,6 +406,7 @@ public class GarbageCollectorThread extends SafeRunnable {
             minorCompacting.set(false);
         }
 
+        //强制清理执行完后，就重置，如果正在执行强制清理的话，再触发是没有用的
         if (force) {
             if (forceGarbageCollection.compareAndSet(true, false)) {
                 LOG.info("{} Set forceGarbageCollection to false after force GC to make it forceGC-able again.", Thread

@@ -65,6 +65,7 @@ public class GCDetailsService implements HttpEndpointService {
         HttpServiceResponse response = new HttpServiceResponse();
 
         if (HttpServer.Method.GET == request.getMethod()) {
+            // 必须是GET，这里回收集清理的状态信息，然后返回给客户端
             List<GarbageCollectionStatus> details = bookieServer.getBookie()
                 .getLedgerStorage().getGarbageCollectionStatus();
 

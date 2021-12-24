@@ -61,10 +61,15 @@ public abstract class HttpRouter<Handler> {
     // 强制触发GC
     public static final String GC                           = "/api/v1/bookie/gc";
 
+    // 获取gc详情
     public static final String GC_DETAILS                   = "/api/v1/bookie/gc_details";
+    // 获取bookie状态信息
     public static final String BOOKIE_STATE                 = "/api/v1/bookie/state";
+    // 检查bookie是否ready，是否完成启动
     public static final String BOOKIE_IS_READY              = "/api/v1/bookie/is_ready";
+    // 获取bookie的信息：主要包括磁盘容量使用情况,
     public static final String BOOKIE_INFO                  = "/api/v1/bookie/info";
+
     // autorecovery
     public static final String AUTORECOVERY_STATUS          = "/api/v1/autorecovery/status";
     public static final String RECOVERY_BOOKIE              = "/api/v1/autorecovery/bookie";
