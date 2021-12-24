@@ -35,6 +35,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 处理 Bookkeeper Decommission 相关 http 请求的 HttpEndpointService。
+ * PUT 方法将发送在后端运行的 decommission bookie 命令。
+ *
  * HttpEndpointService that handle Bookkeeper Decommission related http request.
  * The PUT method will send decommission bookie command running at backend.
  */
@@ -54,7 +57,8 @@ public class DecommissionService implements HttpEndpointService {
         this.executor = executor;
     }
 
-    /*
+    /**
+     * 退役bookie
      * decommission bookie.
      */
     @Override
@@ -62,6 +66,7 @@ public class DecommissionService implements HttpEndpointService {
         HttpServiceResponse response = new HttpServiceResponse();
 
         if (HttpServer.Method.PUT == request.getMethod()) {
+            // 必须是PUT请求
             String requestBody = request.getBody();
 
             if (requestBody == null) {
@@ -70,6 +75,7 @@ public class DecommissionService implements HttpEndpointService {
                 return response;
             }
 
+            //传的json串
             @SuppressWarnings("unchecked")
             HashMap<String, String> configMap = JsonUtil.fromJson(requestBody, HashMap.class);
             if (configMap != null && configMap.containsKey("bookie_src")) {

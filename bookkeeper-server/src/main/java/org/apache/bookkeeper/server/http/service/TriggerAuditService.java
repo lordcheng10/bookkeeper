@@ -54,6 +54,7 @@ public class TriggerAuditService implements HttpEndpointService {
         HttpServiceResponse response = new HttpServiceResponse();
 
         if (HttpServer.Method.PUT == request.getMethod()) {
+            //必须是PUT命令
             try {
                 bka.triggerAudit();
             } catch (Exception e) {

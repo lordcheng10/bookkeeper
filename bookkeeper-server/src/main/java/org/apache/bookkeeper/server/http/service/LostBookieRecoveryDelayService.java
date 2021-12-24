@@ -51,6 +51,7 @@ public class LostBookieRecoveryDelayService implements HttpEndpointService {
         this.bka = bka;
     }
 
+
     /*
      * set/get lostBookieRecoveryDelay.
      */
@@ -59,6 +60,7 @@ public class LostBookieRecoveryDelayService implements HttpEndpointService {
         HttpServiceResponse response = new HttpServiceResponse();
 
         if (HttpServer.Method.PUT == request.getMethod()) {
+            //如果是PUT 请求的话，那么就是更新delay_seconds，否则就是查下delay_seconds
             // request body as {"delay_seconds": <delay_seconds>}
             String requestBody = request.getBody();
 

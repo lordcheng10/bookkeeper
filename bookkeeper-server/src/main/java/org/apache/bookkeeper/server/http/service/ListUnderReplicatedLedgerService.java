@@ -68,6 +68,7 @@ public class ListUnderReplicatedLedgerService implements HttpEndpointService {
         Map<String, String> params = request.getParams();
 
         if (HttpServer.Method.GET == request.getMethod()) {
+            //必须是GET命令
             final String includingBookieId;
             final String excludingBookieId;
             boolean printMissingReplica = false;

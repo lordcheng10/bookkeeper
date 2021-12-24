@@ -75,11 +75,15 @@ public abstract class HttpRouter<Handler> {
     public static final String AUTORECOVERY_STATUS          = "/api/v1/autorecovery/status";
     // 给定bookie，可以将该bookie上的ledger数据，随机打散到其他bookie节点上
     public static final String RECOVERY_BOOKIE              = "/api/v1/autorecovery/bookie";
+    // 列举出所有under replica的ledger
     public static final String LIST_UNDER_REPLICATED_LEDGER = "/api/v1/autorecovery/list_under_replicated_ledger";
+    // 查看谁说auditor
     public static final String WHO_IS_AUDITOR               = "/api/v1/autorecovery/who_is_auditor";
+    // 通过将 lostBookieRecoveryDelay 重置为其当前值来触发 AuditTask。
     public static final String TRIGGER_AUDIT                = "/api/v1/autorecovery/trigger_audit";
+    // 更新lost_bookie_recovery_delay时间，或查下lost_bookie_recovery_delay时间
     public static final String LOST_BOOKIE_RECOVERY_DELAY   = "/api/v1/autorecovery/lost_bookie_recovery_delay";
-    //decommission: 退役
+    //decommission: 下线挂掉的bookie，和recovery bookie的区别是：recovery的bookie是没有挂掉的
     public static final String DECOMMISSION                 = "/api/v1/autorecovery/decommission";
 
 

@@ -1518,7 +1518,8 @@ public class BookKeeperAdmin implements AutoCloseable {
     }
 
     /**
-     * 通过将 lostBookieRecoveryDelay 重置为其当前值来触发 AuditTask。 如果未启用自动恢复或没有审核员，则此方法将抛出 UnavailableException。
+     * 通过将 lostBookieRecoveryDelay 重置为其当前值来触发 AuditTask。
+     * 如果未启用自动恢复或没有审核员，则此方法将抛出 UnavailableException。
      *
      * Trigger AuditTask by resetting lostBookieRecoveryDelay to its current
      * value. If Autorecovery is not enabled or if there is no Auditor then this
@@ -1551,6 +1552,11 @@ public class BookKeeperAdmin implements AutoCloseable {
     }
 
     /**
+     *
+     * 通过重置 lostBookieRecoveryDelay 来触发 AuditTask，然后确保存储在给定退役 bookie 中的分类帐被正确复制，
+     * 并且它们不会因为给定的 bookie 而复制不足。 这个方法会一直等到没有因为这个 bookie 导致的未充分复制的账本。
+     * 如果给定的 Bookie 尚未关闭，则它将抛出 BKIllegalOpException。
+     *
      * Triggers AuditTask by resetting lostBookieRecoveryDelay and then make
      * sure the ledgers stored in the given decommissioning bookie are properly
      * replicated and they are not underreplicated because of the given bookie.
@@ -1572,14 +1578,18 @@ public class BookKeeperAdmin implements AutoCloseable {
     public void decommissionBookie(BookieId bookieAddress)
             throws CompatibilityException, UnavailableException, KeeperException, InterruptedException, IOException,
             BKAuditException, TimeoutException, BKException {
+        // 看看该bookie是否存在，如果存在，说明该bookie没有shutdown，那么久抛异常
         if (getAvailableBookies().contains(bookieAddress) || getReadOnlyBookies().contains(bookieAddress)) {
             LOG.error("Bookie: {} is not shutdown yet", bookieAddress);
             throw BKException.create(BKException.Code.IllegalOpException);
         }
 
+        //触发audit
         triggerAudit();
 
-        /*
+        /**
+         * 休眠 30 秒，以便 Auditor 有机会触发其强制审计任务并让 underreplicationmanager 进程执行其复制过程
+         *
          * Sleep for 30 secs, so that Auditor gets chance to trigger its
          * force audittask and let the underreplicationmanager process
          * to do its replication process
