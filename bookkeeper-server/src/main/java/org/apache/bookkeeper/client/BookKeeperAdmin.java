@@ -557,6 +557,11 @@ public class BookKeeperAdmin implements AutoCloseable {
     }
 
     /**
+     * 重建和恢复存储在源 bookie 上的账本碎片数据的同步方法。 那个 bookie 可能完全失败了，现在存储在它上面的分类帐数据复制不足。
+     * 如果我们想将失败的源 bookie 上的所有分类帐片段数据复制到它，可以提供一个可选的目标 bookie 服务器。
+     * 否则，我们可能会根据负载将分类帐片段随机分配到活动的博彩公司集。
+     * 所有 ZooKeeper 分类帐元数据都将更新以指向包含复制分类帐片段的新 bookie。
+     *
      * Synchronous method to rebuild and recover the ledger fragments data that
      * was stored on the source bookie. That bookie could have failed completely
      * and now the ledger data that was stored on it is under replicated. An
@@ -1513,6 +1518,8 @@ public class BookKeeperAdmin implements AutoCloseable {
     }
 
     /**
+     * 通过将 lostBookieRecoveryDelay 重置为其当前值来触发 AuditTask。 如果未启用自动恢复或没有审核员，则此方法将抛出 UnavailableException。
+     *
      * Trigger AuditTask by resetting lostBookieRecoveryDelay to its current
      * value. If Autorecovery is not enabled or if there is no Auditor then this
      * method will throw UnavailableException.

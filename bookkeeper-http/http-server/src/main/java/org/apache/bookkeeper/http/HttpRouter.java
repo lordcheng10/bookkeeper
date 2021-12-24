@@ -71,7 +71,9 @@ public abstract class HttpRouter<Handler> {
     public static final String BOOKIE_INFO                  = "/api/v1/bookie/info";
 
     // autorecovery
+    // 开启/关闭/查下 autorecovery
     public static final String AUTORECOVERY_STATUS          = "/api/v1/autorecovery/status";
+    // 给定bookie，可以将该bookie上的ledger数据，随机打散到其他bookie节点上
     public static final String RECOVERY_BOOKIE              = "/api/v1/autorecovery/bookie";
     public static final String LIST_UNDER_REPLICATED_LEDGER = "/api/v1/autorecovery/list_under_replicated_ledger";
     public static final String WHO_IS_AUDITOR               = "/api/v1/autorecovery/who_is_auditor";

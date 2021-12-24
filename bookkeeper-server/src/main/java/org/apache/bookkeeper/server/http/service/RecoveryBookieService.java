@@ -40,6 +40,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * HttpEndpointService 处理Bookkeeper 恢复相关的http 请求。
+ *
+ * <p>PUT 方法将使用提供的参数恢复 bookie。
+ * 输入体的参数应该是这样的格式：
+ * {
+ * "bookie_src": [ "bookie_src1", "bookie_src2"...],
+ * "bookie_dest": [ "bookie_dest1", "bookie_dest2"... ],
+ * "delete_cookie": &lt;bool_value&gt;
+ * }
+ *
  * HttpEndpointService that handle Bookkeeper recovery related http request.
  *
  * <p>The PUT method will recovery bookie with provided parameter.
@@ -86,6 +96,7 @@ public class RecoveryBookieService implements HttpEndpointService {
         String requestBody = request.getBody();
         RecoveryRequestJsonBody requestJsonBody;
 
+        // 请求body为null，那么就直接返回not foud
         if (requestBody == null) {
             response.setCode(HttpServer.StatusCode.NOT_FOUND);
             response.setBody("No request body provide.");
@@ -93,6 +104,7 @@ public class RecoveryBookieService implements HttpEndpointService {
         }
 
         try {
+            // 将请求的body转换为json格式
             requestJsonBody = JsonUtil.fromJson(requestBody, RecoveryRequestJsonBody.class);
             LOG.debug("bookie_src: [" + requestJsonBody.bookieSrc.get(0)
                 + "],  delete_cookie: [" + requestJsonBody.deleteCookie + "]");
@@ -103,15 +115,22 @@ public class RecoveryBookieService implements HttpEndpointService {
             return response;
         }
 
+
         if (HttpServer.Method.PUT == request.getMethod() && !requestJsonBody.bookieSrc.isEmpty()) {
+            // 必须是PUT请求
             runFunctionWithRegistrationManager(conf, rm -> {
+                //获取源bookie
                 final String bookieSrcSerialized = requestJsonBody.bookieSrc.get(0);
                 executor.execute(() -> {
                     try {
+                        //获取源bookie
                         BookieId bookieSrc = BookieId.parse(bookieSrcSerialized);
+                        //删除cookie
                         boolean deleteCookie = requestJsonBody.deleteCookie;
                         LOG.info("Start recovering bookie.");
+                        // 重新构建某个bookie上的数据，随机到其他bookie上
                         bka.recoverBookieData(bookieSrc);
+                        //是否删除cookie
                         if (deleteCookie) {
                             Versioned<Cookie> cookie = Cookie.readFromRegistrationManager(rm, bookieSrc);
                             cookie.getValue().deleteFromRegistrationManager(rm, bookieSrc, cookie.getVersion());

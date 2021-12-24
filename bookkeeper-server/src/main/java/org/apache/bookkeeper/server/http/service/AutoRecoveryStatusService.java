@@ -33,6 +33,10 @@ import org.apache.bookkeeper.meta.MetadataDrivers;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
+ * 处理与自动恢复状态相关的 http 请求的 HttpEndpointService。
+ *   <p></p>GET 方法返回自动恢复的当前状态。 输出类似于 {"enabled" : true}。
+ *   <p>PUT 方法需要一个参数“已启用”，如果其值为“真”，则启用自动恢复，否则禁用自动恢复。 如果 Autorecovery 状态已与所需的状态相同，则该行为是幂等的。 输出将是操作后的当前状态。
+ *
  * HttpEndpointService that handles Autorecovery status related http requests.
  *
  * <p></p>The GET method returns the current status of Autorecovery. The output would be like {"enabled" : true}.
@@ -75,6 +79,7 @@ public class AutoRecoveryStatusService implements HttpEndpointService {
 
     private HttpServiceResponse handleGetStatus(LedgerUnderreplicationManager ledgerUnderreplicationManager)
             throws Exception {
+        //获取isLedgerReplicationEnabled是否开启，并返回给客户端
         String body = JsonUtil.toJson(ImmutableMap.of("enabled",
                 ledgerUnderreplicationManager.isLedgerReplicationEnabled()));
         return new HttpServiceResponse(body, HttpServer.StatusCode.OK);
@@ -83,22 +88,28 @@ public class AutoRecoveryStatusService implements HttpEndpointService {
     private HttpServiceResponse handlePutStatus(HttpServiceRequest request,
                                                 LedgerUnderreplicationManager ledgerUnderreplicationManager)
             throws Exception {
+        // 参数
         Map<String, String> params = ObjectUtils.defaultIfNull(request.getParams(), Collections.emptyMap());
+        // 获取enable参数
         String enabled = params.get("enabled");
+        //  如果没有该参数就报错
         if (enabled == null) {
             return new HttpServiceResponse("Param 'enabled' not found in " + params,
                     HttpServer.StatusCode.BAD_REQUEST);
         }
+        //看看是否开启，如果要开启就删除对应zk目录
         if (Boolean.parseBoolean(enabled)) {
             if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                 ledgerUnderreplicationManager.enableLedgerReplication();
             }
         } else {
+            //否则就创建对应zk目录
             if (ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                 ledgerUnderreplicationManager.disableLedgerReplication();
             }
         }
 
+        //返回当前状态
         // use the current status as the response
         String body = JsonUtil.toJson(ImmutableMap.of("enabled",
                 ledgerUnderreplicationManager.isLedgerReplicationEnabled()));

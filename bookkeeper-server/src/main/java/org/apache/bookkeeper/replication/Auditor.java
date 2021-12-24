@@ -764,6 +764,7 @@ public class Auditor implements AutoCloseable {
                 @Override
                 public void run() {
                     try {
+                        // 如果开启了disable，那么ledger check都省了
                         if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                             LOG.info("Ledger replication disabled, skipping checkAllLedgers");
                             return;
