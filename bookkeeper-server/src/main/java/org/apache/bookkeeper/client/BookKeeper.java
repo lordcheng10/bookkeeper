@@ -99,12 +99,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 簿记员客户端。
  * BookKeeper client.
- *
+ * 我们假设在任何时候都有一个账本的作者。
  * <p>We assume there is one single writer to a ledger at any time.
  *
+ * 有四种可能的操作：开始一个新的分类帐，写入分类帐，读取分类帐和删除分类帐。
  * <p>There are four possible operations: start a new ledger, write to a ledger,
  * read from a ledger and delete a ledger.
+ *
+ * 同步调用导致的异常和异步调用导致的错误代码可以在 {@link BKException} 类中找到。
  *
  * <p>The exceptions resulting from synchronous calls and error code resulting from
  * asynchronous calls can be found in the class {@link BKException}.
@@ -113,20 +117,27 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
 
     private static final Logger LOG = LoggerFactory.getLogger(BookKeeper.class);
 
-
+    // 线程池，然后直接传入了BookieClient对象中，在里面使用.那么有个问题EventLoopGroup线程池有什么作用
     final EventLoopGroup eventLoopGroup;
+    // ByteBuffer分配器,这个也是传入BookieClient中去使用的
     private final ByteBufAllocator allocator;
 
+    // 此客户端的统计记录器。
     // The stats logger for this client.
     private final StatsLogger statsLogger;
+    // 客户端metric统计信息
     private final BookKeeperClientStats clientStats;
+    // bookkeeper 客户端隔离概率
     private final double bookieQuarantineRatio;
 
+    // 事件循环组是我们创建的，还是由实例化我们的人所有
     // whether the event loop group is one we created, or is owned by whoever
     // instantiated us
     boolean ownEventLoopGroup = false;
 
+    // bookkeeper客户端
     final BookieClient bookieClient;
+    // bookie监听器
     final BookieWatcherImpl bookieWatcher;
 
     final OrderedExecutor mainWorkerPool;
@@ -465,10 +476,12 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
 
         // initialize event loop group
         if (null == eventLoopGroup) {
+            // 初始化event 线程池
             this.eventLoopGroup = EventLoopUtil.getClientEventLoopGroup(conf,
                     new DefaultThreadFactory("bookkeeper-io"));
             this.ownEventLoopGroup = true;
         } else {
+            //  外面传入的event
             this.eventLoopGroup = eventLoopGroup;
             this.ownEventLoopGroup = false;
         }
@@ -509,6 +522,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
                 conf, this.placementPolicy, metadataDriver.getRegistrationClient(), bookieAddressResolver,
                 this.statsLogger.scope(WATCHER_SCOPE));
 
+        // 用线程池来初始化bookieClient
         // initialize bookie client
         this.bookieClient = new BookieClientImpl(conf, this.eventLoopGroup, this.allocator, this.mainWorkerPool,
                 scheduler, rootStatsLogger, this.bookieWatcher.getBookieAddressResolver());
@@ -1462,6 +1476,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
             requestTimer.stop();
         }
         if (ownEventLoopGroup) {
+            // 关闭线程池
             eventLoopGroup.shutdownGracefully();
         }
         this.metadataDriver.close();

@@ -96,6 +96,7 @@ public class AutoRecoveryMain {
             shutdown(ExitCode.ZK_EXPIRED);
         });
 
+        // autorecovery服务的主要3个组件逻辑就在这里
         auditorElector = new AuditorElector(
             BookieImpl.getBookieId(conf).toString(),
             conf,
@@ -268,15 +269,18 @@ public class AutoRecoveryMain {
         LOG.info("Using configuration file " + confFile);
     }
 
-    /*
+    /**
+     * 解析控制台参数
      * Parse console args
      */
     private static ServerConfiguration parseArgs(String[] args)
             throws IllegalArgumentException {
         try {
+            // 解析参数
             BasicParser parser = new BasicParser();
             CommandLine cmdLine = parser.parse(opts, args);
 
+            // 如果命令行包含h抛异常
             if (cmdLine.hasOption('h')) {
                 throw new IllegalArgumentException();
             }
@@ -289,6 +293,7 @@ public class AutoRecoveryMain {
                     throw new IllegalArgumentException("unexpected arguments [" + String.join(" ", leftArgs) + "]");
                 }
                 String confFile = cmdLine.getOptionValue("c");
+                //加载配置
                 loadConfFile(conf, confFile);
             }
 
@@ -302,16 +307,19 @@ public class AutoRecoveryMain {
     }
 
     public static void main(String[] args) {
+        // 执行主方法，并返回结果码
         int retCode = doMain(args);
         Runtime.getRuntime().exit(retCode);
     }
 
     static int doMain(String[] args) {
-
+        // 服务端配置
         ServerConfiguration conf;
 
+        // 解析命令行
         // 0. parse command line
         try {
+            // 加载配置文件：解析传入参数生产conf配置
             conf = parseArgs(args);
         } catch (IllegalArgumentException iae) {
             LOG.error("Error parsing command line arguments : ", iae);
@@ -322,6 +330,7 @@ public class AutoRecoveryMain {
             return ExitCode.INVALID_CONF;
         }
 
+        // 构建组件堆栈：
         // 1. building the component stack:
         LifecycleComponent server;
         try {
@@ -331,6 +340,7 @@ public class AutoRecoveryMain {
             return ExitCode.SERVER_EXCEPTION;
         }
 
+        // 启动服务
         // 2. start the server
         try {
             ComponentStarter.startComponent(server).get();
@@ -349,6 +359,7 @@ public class AutoRecoveryMain {
         LifecycleComponentStack.Builder serverBuilder = LifecycleComponentStack.newBuilder()
                 .withName("autorecovery-server");
 
+        // 构建统计信息提供者
         // 1. build stats provider
         StatsProviderService statsProviderService = new StatsProviderService(conf);
         StatsLogger rootStatsLogger = statsProviderService.getStatsProvider().getStatsLogger("");
@@ -356,12 +367,14 @@ public class AutoRecoveryMain {
         serverBuilder.addComponent(statsProviderService);
         LOG.info("Load lifecycle component : {}", StatsProviderService.class.getName());
 
+        // 建立自动恢复服务器
         // 2. build AutoRecovery server
         AutoRecoveryService autoRecoveryService = new AutoRecoveryService(conf, rootStatsLogger);
 
         serverBuilder.addComponent(autoRecoveryService);
         LOG.info("Load lifecycle component : {}", AutoRecoveryService.class.getName());
 
+        // 构建http服务
         // 4. build http service
         if (conf.getServerConf().isHttpServerEnabled()) {
             BKHttpServiceProvider provider = new BKHttpServiceProvider.Builder()

@@ -620,6 +620,7 @@ public class Auditor implements AutoCloseable {
             }));
     }
 
+    //当lost delay变更时候，会触发下面这个方法，只要delay lost配置有变更，肯定会触发一次audit审计，只是看是不是立即执行，还是delay一段时间执行
     synchronized Future<?> submitLostBookieRecoveryDelayChangedEvent() {
         if (executor.isShutdown()) {
             SettableFuture<Void> f = SettableFuture.<Void> create();
@@ -631,7 +632,9 @@ public class Auditor implements AutoCloseable {
             @Override
             public void run() {
                 try {
+                    //如果开启了diable，这里回暂停
                     waitIfLedgerReplicationDisabled();
+                    // 读取zk上的delay时间
                     lostBookieRecoveryDelay = Auditor.this.ledgerUnderreplicationManager
                             .getLostBookieRecoveryDelay();
                     // if there is pending auditTask, cancel the task. So that it can be rescheduled
@@ -642,6 +645,7 @@ public class Auditor implements AutoCloseable {
                         numDelayedBookieAuditsCancelled.inc();
                     }
 
+                    // 如果 lostBookieRecoveryDelay 设置为其先前的值或设置为0，则将其视为立即触发审计的信号。
                     // if lostBookieRecoveryDelay is set to its previous value then consider it as
                     // signal to trigger the Audit immediately.
                     if ((lostBookieRecoveryDelay == 0)
@@ -655,6 +659,7 @@ public class Auditor implements AutoCloseable {
                         auditTask = null;
                         bookiesToBeAudited.clear();
                     } else if (auditTask != null) {
+                        // 否则就delay触发一次audit审计
                         LOG.info("lostBookieRecoveryDelay has been set to {}, so rescheduling AuditTask accordingly",
                                 lostBookieRecoveryDelay);
                         auditTask = executor.schedule(safeRun(new Runnable() {
@@ -691,6 +696,7 @@ public class Auditor implements AutoCloseable {
             }
 
             try {
+                //监听bookie的改变
                 watchBookieChanges();
                 knownBookies = getAvailableBookies();
             } catch (BKException bke) {
@@ -699,6 +705,7 @@ public class Auditor implements AutoCloseable {
             }
 
             try {
+                // 监听lost delay的改变,当我们通过命令手动改变delay时间时候，会触发LostBookieRecoveryDelayChangedCb
                 this.ledgerUnderreplicationManager
                         .notifyLostBookieRecoveryDelayChanged(new LostBookieRecoveryDelayChangedCb());
             } catch (UnavailableException ue) {
@@ -707,29 +714,37 @@ public class Auditor implements AutoCloseable {
                 submitShutdownTask();
             }
 
+            // 定期检查是否有挂掉的bookie，然后将上面的ledger副本全部写到zk上，靠worker repli来进行复制
             scheduleBookieCheckTask();
+            // 定期检查所有ledger，将有副本损坏的leder写到zk上，然后通过Replica worker来进行复制数据
             scheduleCheckAllLedgersTask();
+            // 定期检查ledger的放置状态，不做调整，只是统计
             schedulePlacementPolicyCheckTask();
+            //定期检查副本数状况，不做调整，只是统计
             scheduleReplicasCheckTask();
         }
     }
 
     private void scheduleBookieCheckTask() {
+        // 默认检查周期设置的1天
         long bookieCheckInterval = conf.getAuditorPeriodicBookieCheckInterval();
         if (bookieCheckInterval == 0) {
+            //如果设置为0，那么久只执行一次
             LOG.info("Auditor periodic bookie checking disabled, running once check now anyhow");
             executor.submit(safeRun(bookieCheck));
         } else {
             LOG.info("Auditor periodic bookie checking enabled" + " 'auditorPeriodicBookieCheckInterval' {} seconds",
                     bookieCheckInterval);
+            //这里回周期调度bookieCheck方法，bookieCheck实际还是调度的startAudit，开启审计
             executor.scheduleAtFixedRate(safeRun(bookieCheck), 0, bookieCheckInterval, TimeUnit.SECONDS);
         }
     }
 
     private void scheduleCheckAllLedgersTask(){
+        // 检查周期，默认是1周检查一次
         long interval = conf.getAuditorPeriodicCheckInterval();
 
-        if (interval > 0) {
+        if (interval > 0) {//必须大于0，否则就不执行
             LOG.info("Auditor periodic ledger checking enabled" + " 'auditorPeriodicCheckInterval' {} seconds",
                     interval);
 
@@ -737,12 +752,13 @@ public class Auditor implements AutoCloseable {
             long durationSinceLastExecutionInSecs;
             long initialDelay;
             try {
+                // 获取检查ledger的创建时间
                 checkAllLedgersLastExecutedCTime = ledgerUnderreplicationManager.getCheckAllLedgersCTime();
             } catch (UnavailableException ue) {
                 LOG.error("Got UnavailableException while trying to get checkAllLedgersCTime", ue);
                 checkAllLedgersLastExecutedCTime = -1;
             }
-            if (checkAllLedgersLastExecutedCTime == -1) {
+            if (checkAllLedgersLastExecutedCTime == -1) {//如果创建时间为-1，那么久不用delay 直接检查
                 durationSinceLastExecutionInSecs = -1;
                 initialDelay = 0;
             } else {
@@ -752,6 +768,7 @@ public class Auditor implements AutoCloseable {
                     // this can happen if there is no strict time ordering
                     durationSinceLastExecutionInSecs = 0;
                 }
+                //否则就看下还要delay多久
                 initialDelay = durationSinceLastExecutionInSecs > interval ? 0
                         : (interval - durationSinceLastExecutionInSecs);
             }
@@ -771,6 +788,7 @@ public class Auditor implements AutoCloseable {
 
                         Stopwatch stopwatch = Stopwatch.createStarted();
                         LOG.info("Starting checkAllLedgers");
+                        //这里才是检查ledger的真正逻辑
                         checkAllLedgers();
                         long checkAllLedgersDuration = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS);
                         LOG.info("Completed checkAllLedgers in {} milliSeconds", checkAllLedgersDuration);
@@ -794,10 +812,12 @@ public class Auditor implements AutoCloseable {
         }
     }
 
+    // 这个看起来是统计没有遵循放置策略和遵循放置策略的ledger数的，然后以日志和metric的方式输出
     private void schedulePlacementPolicyCheckTask(){
         long interval = conf.getAuditorPeriodicPlacementPolicyCheckInterval();
 
         if (interval > 0) {
+            //需要大于0才会执行，否则就相当于关闭了，默认是关闭了
             LOG.info("Auditor periodic placement policy check enabled"
                     + " 'auditorPeriodicPlacementPolicyCheckInterval' {} seconds", interval);
 
@@ -834,6 +854,7 @@ public class Auditor implements AutoCloseable {
                     try {
                         Stopwatch stopwatch = Stopwatch.createStarted();
                         LOG.info("Starting PlacementPolicyCheck");
+                        // 周期检查放置策略
                         placementPolicyCheck();
                         long placementPolicyCheckDuration = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS);
                         int numOfLedgersFoundNotAdheringInPlacementPolicyCheckValue =
@@ -916,6 +937,7 @@ public class Auditor implements AutoCloseable {
     }
 
     private void scheduleReplicasCheckTask() {
+        // 这个检查周期默认是0，也就是默认不开启
         long interval = conf.getAuditorPeriodicReplicasCheckInterval();
 
         if (interval <= 0) {
@@ -1018,11 +1040,13 @@ public class Auditor implements AutoCloseable {
         @Override
         public void operationComplete(int rc, Void result) {
             try {
+                // 这里回再次监听lost改变
                 Auditor.this.ledgerUnderreplicationManager
                         .notifyLostBookieRecoveryDelayChanged(LostBookieRecoveryDelayChangedCb.this);
             } catch (UnavailableException ae) {
                 LOG.error("Exception while registering for a LostBookieRecoveryDelay notification", ae);
             }
+            //这里才是改变后，真正的处理逻辑
             Auditor.this.submitLostBookieRecoveryDelayChangedEvent();
         }
     }
@@ -1052,6 +1076,7 @@ public class Auditor implements AutoCloseable {
     }
 
     private void watchBookieChanges() throws BKException {
+        //可写bookie改变和只读bookie改变，都会提交AuditTask任务
         admin.watchWritableBookiesChanged(bookies -> submitAuditTask());
         admin.watchReadOnlyBookiesChanged(bookies -> submitAuditTask());
     }
@@ -1169,6 +1194,7 @@ public class Auditor implements AutoCloseable {
 
         return FutureUtils.processList(
             Lists.newArrayList(ledgers),
+            // 这里会将掉副本的ledger写到zk上，然后靠replica worker线程来复制数据
             ledgerId -> ledgerUnderreplicationManager.markLedgerUnderreplicatedAsync(ledgerId, missingBookies),
             null
         );
@@ -1198,6 +1224,7 @@ public class Auditor implements AutoCloseable {
                     callback.processResult(Code.OK, null, null);
                     return;
                 }
+                //这里会标记掉队的ledger
                 publishSuspectedLedgersAsync(bookies.stream().map(BookieId::toString).collect(Collectors.toList()),
                     Sets.newHashSet(lh.getId())
                 ).whenComplete((result, cause) -> {
@@ -1241,6 +1268,7 @@ public class Auditor implements AutoCloseable {
     }
 
     /**
+     * 列出所有分类帐并单独检查它们。 这不应该经常运行。
      * List all the ledgers and check them individually. This should not
      * be run very often.
      */
@@ -1255,6 +1283,7 @@ public class Auditor implements AutoCloseable {
             Processor<Long> checkLedgersProcessor = (ledgerId, callback) -> {
                 try {
                     if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
+                        // 首先看ledger有没有开启
                         LOG.info("Ledger rereplication has been disabled, aborting periodic check");
                         FutureUtils.complete(processFuture, null);
                         return;
@@ -1266,6 +1295,7 @@ public class Auditor implements AutoCloseable {
                 }
 
                 try {
+                    //获取修复ledgerId的权限
                     if (!openLedgerNoRecoverySemaphore.tryAcquire(openLedgerNoRecoverySemaphoreWaitTimeoutMSec,
                         TimeUnit.MILLISECONDS)) {
                         LOG.warn("Failed to acquire semaphore for {} ms, ledgerId: {}",
@@ -1280,13 +1310,17 @@ public class Auditor implements AutoCloseable {
                     return;
                 }
 
+                //这里会打开该ledger
                 localAdmin.asyncOpenLedgerNoRecovery(ledgerId, (rc, lh, ctx) -> {
                     openLedgerNoRecoverySemaphore.release();
                     if (Code.OK == rc) {
+                        // 这里回检查ledger
                         checker.checkLedger(lh,
                                 // the ledger handle will be closed after checkLedger is done.
                                 new ProcessLostFragmentsCb(lh, callback),
+                                // 这里回传入一个fragment损坏多少比率，才算是坏了，需要修复
                                 conf.getAuditorLedgerVerificationPercentage());
+                        // 我们收集以下统计数据来衡量 bk 集群中单个账本的分布情况，片段/bookies 的数量越多，分布越多
                         // we collect the following stats to get a measure of the
                         // distribution of a single ledger within the bk cluster
                         // the higher the number of fragments/bookies, the more distributed it is
@@ -1305,6 +1339,7 @@ public class Auditor implements AutoCloseable {
                 }, null);
             };
 
+            // 这里会把所有ledger都拿出来检查一遍
             ledgerManager.asyncProcessLedgers(checkLedgersProcessor,
                 (rc, path, ctx) -> {
                     if (Code.OK == rc) {
@@ -1315,6 +1350,7 @@ public class Auditor implements AutoCloseable {
                 }, null, BKException.Code.OK, BKException.Code.ReadException);
             FutureUtils.result(processFuture, BKException.HANDLER);
             try {
+                //这里回更新创建时间
                 ledgerUnderreplicationManager.setCheckAllLedgersCTime(System.currentTimeMillis());
             } catch (UnavailableException ue) {
                 LOG.error("Got exception while trying to set checkAllLedgersCTime", ue);
@@ -1805,6 +1841,7 @@ public class Auditor implements AutoCloseable {
         }
     }
 
+    // 这个也是检查副本数确实的情况的。然后以日志和metric方式统计
     void replicasCheck() throws BKAuditException {
         ConcurrentHashMap<Long, MissingEntriesInfoOfLedger> ledgersWithMissingEntries =
                     new ConcurrentHashMap<Long, MissingEntriesInfoOfLedger>();

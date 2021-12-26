@@ -2545,6 +2545,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 获取审计员对所有已关闭分类账进行安置政策检查的规律性。
      * Get the regularity at which the auditor does placement policy check of
      * all ledgers, which are closed.
      *

@@ -17,6 +17,7 @@
 package org.apache.bookkeeper.stats;
 
 /**
+ * 一个简单的接口，只公开了 2 个有用的方法。 一个获取 Op 统计的记录器，另一个获取简单统计的记录器
  * A simple interface that exposes just 2 useful methods. One to get the logger for an Op stat
  * and another to get the logger for a simple stat
  */

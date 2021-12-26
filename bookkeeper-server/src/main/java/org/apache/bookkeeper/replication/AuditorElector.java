@@ -43,6 +43,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 使用 Apache ZooKeeper 执行审计员选举。
+ * 使用 ZooKeeper 作为协调服务，当博彩公司竞标审计员时，它会在 ZooKeeper 上创建一个临时序列文件（znode）并被视为他们的投票。
+ * 投票格式为“V_sequencenumber”。
+ * 选举将通过比较临时序列号来完成，创建最少 znode 的博彩公司将被选为审计员。
+ * 所有其他博彩公司将根据临时序列号在其前任 znode 上观看。
+ *
  * Performing auditor election using Apache ZooKeeper. Using ZooKeeper as a
  * coordination service, when a bookie bids for auditor, it creates an ephemeral
  * sequential file (znode) on ZooKeeper and considered as their vote. Vote
@@ -51,6 +57,7 @@ import org.slf4j.LoggerFactory;
  * will be elected as Auditor. All the other bookies will be watching on their
  * predecessor znode according to the ephemeral sequence numbers.
  */
+// 这里打上标签StatsDoc，然后StatsDocGenerator可以找出所有打上该标记的类，然后生成对应文档。
 @StatsDoc(
     name = AUDITOR_SCOPE,
     help = "Auditor related stats"
@@ -59,13 +66,22 @@ public class AuditorElector {
     private static final Logger LOG = LoggerFactory
             .getLogger(AuditorElector.class);
 
+    // bookieId: 通常格式是ip:port
     private final String bookieId;
+    // 配置文件
     private final ServerConfiguration conf;
+    // bookKeeper客户端：主要提供四类操作：开始一个新的分类帐，写入分类帐，读取分类帐和删除分类帐。
     private final BookKeeper bkc;
+
+
+    // 是否是自己创建的bookkeeper客户端
     private final boolean ownBkc;
+    // 执行线程池
     private final ExecutorService executor;
+    // 账本审计经理
     private final LedgerAuditorManager ledgerAuditorManager;
 
+    // 审核员
     Auditor auditor;
     private AtomicBoolean running = new AtomicBoolean(false);
 

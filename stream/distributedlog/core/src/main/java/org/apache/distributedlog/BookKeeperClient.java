@@ -52,10 +52,12 @@ import org.slf4j.LoggerFactory;
 
 
 /**
+ * {@link BookKeeper} 上的 BookKeeper 客户端包装器。
  * BookKeeper Client wrapper over {@link BookKeeper}.
  *
  * <h3>Metrics</h3>
  * <ul>
+ *     簿记员操作统计信息通过 {@link BookKeeper} 在当前范围内公开
  * <li> bookkeeper operation stats are exposed under current scope by {@link BookKeeper}
  * </ul>
  */

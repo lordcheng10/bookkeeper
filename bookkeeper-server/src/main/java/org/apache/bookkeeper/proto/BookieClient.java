@@ -36,6 +36,7 @@ import org.apache.bookkeeper.util.AvailabilityOfEntriesOfLedger;
 import org.apache.bookkeeper.util.ByteBufList;
 
 /**
+ * 与博彩公司交谈的低级客户端。
  * Low level client for talking to bookies.
  */
 public interface BookieClient {

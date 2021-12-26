@@ -58,6 +58,7 @@ import org.yaml.snakeyaml.DumperOptions.ScalarStyle;
 import org.yaml.snakeyaml.Yaml;
 
 /**
+ * 用来自动生成添加的metric介绍文档的.
  * Generator stats documentation.
  */
 @Slf4j
@@ -119,11 +120,13 @@ public class StatsDocGenerator {
 
     public void generate(String filename) throws Exception {
         log.info("Processing classes under package {}", packagePrefix);
+        //获取所有标记有StatsDoc的类
         // get all classes annotated with `StatsDoc`
         Set<Class<?>> annotatedClasses = reflections.getTypesAnnotatedWith(StatsDoc.class);
         log.info("Retrieve all `StatsDoc` annotated classes : {}", annotatedClasses);
 
         for (Class<?> annotatedClass : annotatedClasses) {
+            // 然后这里回自动生成文档
             generateDocForAnnotatedClass(annotatedClass);
         }
         log.info("Successfully processed classes under package {}", packagePrefix);
