@@ -57,8 +57,10 @@ public interface LedgerMetadata {
     int getAckQuorumSize();
 
     /**
+     * 返回最后一个entry id
      * Returns the last entry id of this ledger.
      *
+     * 如果ledger没有密封，那么久返回-1，否则才返回实际的last entryId
      * <p>If this ledger is not sealed {@link #isClosed()}, it returns {@code -1L}.
      *
      * @return the last entry id of this ledger if it is sealed, otherwise -1.
@@ -106,6 +108,7 @@ public interface LedgerMetadata {
     long getCtime();
 
     /**
+     * 返回分类帐是否密封。
      * Returns whether the ledger is sealed or not.
      *
      * @return true if the ledger is sealed, otherwise false.

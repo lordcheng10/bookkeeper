@@ -113,6 +113,7 @@ public class LedgerHandle implements WriteHandle {
     private final CompletableFuture<Void> closePromise = new CompletableFuture<>();
 
     /**
+     * 已确认持久写入博彩公司的最后一个 entryId。此值由读者使用，即 LAC 协议
       * Last entryId which has been confirmed to be written durably to the bookies.
       * This value is used by readers, the the LAC protocol
       */

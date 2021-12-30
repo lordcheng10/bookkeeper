@@ -153,6 +153,7 @@ public interface BookieClient {
     }
 
     /**
+     * 读取条目，不允许快速失败。
      * Read entry, disallowing failfast.
      * @see #readEntry(BookieSocketAddress,long,long,ReadEntryCallback,Object,int,byte[],boolean)
      */

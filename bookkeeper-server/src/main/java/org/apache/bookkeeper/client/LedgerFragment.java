@@ -26,6 +26,7 @@ import java.util.SortedMap;
 import org.apache.bookkeeper.net.BookieSocketAddress;
 
 /**
+ * 表示分类帐的一个段的条目，这些条目存储在段 bookie ensemble 中的 bookie 子集中。
  * Represents the entries of a segment of a ledger which are stored on subset of
  * bookies in the segments bookie ensemble.
  *
@@ -146,6 +147,7 @@ public class LedgerFragment {
     }
 
     /**
+     * 在给定的失败博彩公司中获取片段的第一个存储条目 ID。
      * Get the first stored entry id of the fragment in the given failed bookies.
      *
      * @param bookieIndex

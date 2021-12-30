@@ -1153,6 +1153,7 @@ public class Auditor implements AutoCloseable {
         @Override
         public void operationComplete(int rc, Set<LedgerFragment> fragments) {
             if (rc == BKException.Code.OK) {
+                //要等于OK才发布
                 Set<BookieSocketAddress> bookies = Sets.newHashSet();
                 for (LedgerFragment f : fragments) {
                     bookies.addAll(f.getAddresses());
@@ -1197,7 +1198,7 @@ public class Auditor implements AutoCloseable {
             final LedgerChecker checker = new LedgerChecker(localClient);
 
             final CompletableFuture<Void> processFuture = new CompletableFuture<>();
-
+            //针对每一个ledger进行检查，核心检查逻辑在这里
             Processor<Long> checkLedgersProcessor = (ledgerId, callback) -> {
                 try {
                     if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
@@ -1211,12 +1212,17 @@ public class Auditor implements AutoCloseable {
                     return;
                 }
 
+                //asyncOpenLedgerNoRecovery打开ledger
                 localAdmin.asyncOpenLedgerNoRecovery(ledgerId, (rc, lh, ctx) -> {
+                    //这里是核心检查逻辑
                     if (Code.OK == rc) {
                         checker.checkLedger(lh,
                                 // the ledger handle will be closed after checkLedger is done.
                                 new ProcessLostFragmentsCb(lh, callback),
                                 conf.getAuditorLedgerVerificationPercentage());
+
+
+                        //这里更新metric
                         // we collect the following stats to get a measure of the
                         // distribution of a single ledger within the bk cluster
                         // the higher the number of fragments/bookies, the more distributed it is
@@ -1235,15 +1241,27 @@ public class Auditor implements AutoCloseable {
                 }, null);
             };
 
+
+
+
+
+
+            //遍历所有ledger
             ledgerManager.asyncProcessLedgers(checkLedgersProcessor,
                 (rc, path, ctx) -> {
+                //这个回调是处理完后恢复
                     if (Code.OK == rc) {
                         FutureUtils.complete(processFuture, null);
                     } else {
                         FutureUtils.completeExceptionally(processFuture, BKException.create(rc));
                     }
                 }, null, BKException.Code.OK, BKException.Code.ReadException);
+
+
+            //这里会阻塞等待processFuture完成
             FutureUtils.result(processFuture, BKException.HANDLER);
+
+            //这里更新under replica检查的时间
             try {
                 ledgerUnderreplicationManager.setCheckAllLedgersCTime(System.currentTimeMillis());
             } catch (UnavailableException ue) {

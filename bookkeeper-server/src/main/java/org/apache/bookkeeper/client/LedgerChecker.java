@@ -76,11 +76,14 @@ public class LedgerChecker {
         public void readEntryComplete(int rc, long ledgerId, long entryId,
                 ByteBuf buffer, Object ctx) {
             if (rc == BKException.Code.OK) {
+                //如果读取成功，而且是第一次完成，放置多次调用cb.operationCom..
                 if (numEntries.decrementAndGet() == 0
                         && !completed.getAndSet(true)) {
+                    //这里是传入OK
                     cb.operationComplete(rc, fragment);
                 }
             } else if (!completed.getAndSet(true)) {
+                //这里直接传入错误码
                 cb.operationComplete(rc, fragment);
             }
         }
@@ -113,22 +116,27 @@ public class LedgerChecker {
         @Override
         public void operationComplete(int rc, LedgerFragment lf) {
             if (BKException.Code.OK != rc) {
+                //如果不是OK的错误码，那么久直接放入badBookies中
                 synchronized (badBookies) {
                     badBookies.put(bookieIndex, rc);
                 }
             }
             if (numBookies.decrementAndGet() == 0) {
                 if (badBookies.isEmpty()) {
+                    //如果完成后，bad bookie为空，那么久传OK错误码，表示不复制fragment
                     cb.operationComplete(BKException.Code.OK, fragment);
                 } else {
+                    //如果有损坏的bookie
                     int rcToReturn = BKException.Code.NoBookieAvailableException;
                     for (Map.Entry<Integer, Integer> entry : badBookies.entrySet()) {
                         rcToReturn = entry.getValue();
+                        //遍历每个bookie，看是否有客户端关闭连接的异常，遇到这种异常就不遍历，这样上面的rcToReturn就保留了相应的错误码
                         if (entry.getValue() == BKException.Code.ClientClosedException) {
                             break;
                         }
                     }
                     cb.operationComplete(rcToReturn,
+                            //这里是传入包含这些bad bookie的fragment
                             fragment.subset(badBookies.keySet()));
                 }
             }
@@ -153,16 +161,22 @@ public class LedgerChecker {
                                       Long percentageOfLedgerFragmentToBeVerified)
             throws InvalidFragmentException, BKException {
         Set<Integer> bookiesToCheck = fragment.getBookiesIndexes();
+        //bookiesToCheck是空就直接返回
         if (bookiesToCheck.isEmpty()) {
+            //注意这里传入的是OK，所以不会把该fragment放入bad中
             cb.operationComplete(BKException.Code.OK, fragment);
             return;
         }
 
+        //这里会遍历每个副本，然后都去检验下
         AtomicInteger numBookies = new AtomicInteger(bookiesToCheck.size());
+        //bad  bookie用来收集损坏的bookie
         Map<Integer, Integer> badBookies = new HashMap<Integer, Integer>();
         for (Integer bookieIndex : bookiesToCheck) {
+            //回调
             LedgerFragmentCallback lfCb = new LedgerFragmentCallback(
                     fragment, bookieIndex, cb, badBookies, numBookies);
+            //这里回具体去校验对应bookie上的副本
             verifyLedgerFragment(fragment, bookieIndex, lfCb, percentageOfLedgerFragmentToBeVerified);
         }
     }
@@ -183,6 +197,7 @@ public class LedgerChecker {
                                       GenericCallback<LedgerFragment> cb,
                                       long percentageOfLedgerFragmentToBeVerified)
             throws InvalidFragmentException {
+
         long firstStored = fragment.getFirstStoredEntryId(bookieIndex);
         long lastStored = fragment.getLastStoredEntryId(bookieIndex);
 
@@ -196,13 +211,16 @@ public class LedgerChecker {
             if (lastStored != LedgerHandle.INVALID_ENTRY_ID) {
                 throw new InvalidFragmentException();
             }
+            //这里传入OK，代表不需要修复该fragment
             cb.operationComplete(BKException.Code.OK, fragment);
         } else if (firstStored == lastStored) {
+            //如果第一个entryId和最后一个相等，那么就尝试读取下
             ReadManyEntriesCallback manycb = new ReadManyEntriesCallback(1,
                     fragment, cb);
             bookieClient.readEntry(bookie, fragment.getLedgerId(), firstStored,
                                    manycb, null, BookieProtocol.FLAG_NONE);
         } else {
+            //如果开始和结束的entry并不是相等的
             if (lastStored <= firstStored) {
                 cb.operationComplete(Code.IncorrectParameterException, null);
                 return;
@@ -248,6 +266,7 @@ public class LedgerChecker {
     }
 
     /**
+     * 用于检查条目是否存在的回调,它用于区分已写入但现在无法读取的情况，以及从未写入的情况。
      * Callback for checking whether an entry exists or not.
      * It is used to differentiate the cases where it has been written
      * but now cannot be read, and where it never has been written.
@@ -268,6 +287,7 @@ public class LedgerChecker {
                                       ByteBuf buffer, Object ctx) {
             if (BKException.Code.NoSuchEntryException != rc && BKException.Code.NoSuchLedgerExistsException != rc
                     && BKException.Code.NoSuchLedgerExistsOnMetadataServerException != rc) {
+                //只要不报这些异常，就是存在的
                 entryMayExist.set(true);
             }
 
@@ -290,20 +310,26 @@ public class LedgerChecker {
 
         FullLedgerCallback(long numFragments,
                 GenericCallback<Set<LedgerFragment>> cb) {
+            // 存放损坏的fragment
             badFragments = new HashSet<LedgerFragment>();
+            //初始化要检查的fragment
             this.numFragments = new AtomicLong(numFragments);
+            // 回调方法
             this.cb = cb;
         }
 
         @Override
         public void operationComplete(int rc, LedgerFragment result) {
             if (rc == BKException.Code.ClientClosedException) {
+                //如果客户端关闭了，那么久直接完成,这里传入了一次错误码，所以该bad不会检查
                 cb.operationComplete(BKException.Code.ClientClosedException, badFragments);
                 return;
             } else if (rc != BKException.Code.OK) {
+                //否则只要是其他异常都放到badFragments中
                 badFragments.add(result);
             }
             if (numFragments.decrementAndGet() == 0) {
+                //这里会通过回调将损坏的fragment传回ProcessLostFragmentsCb去标记复制
                 cb.operationComplete(BKException.Code.OK, badFragments);
             }
         }
@@ -318,12 +344,18 @@ public class LedgerChecker {
         checkLedger(lh, cb, 0L);
     }
 
+    //lh : 该ledger的处理方法
+    //cb: 回调
+    //percentageOfLedgerFragmentToBeVerified：要校验的百分比
     public void checkLedger(final LedgerHandle lh,
-                            final GenericCallback<Set<LedgerFragment>> cb,
+                            final GenericCallback<Set<LedgerFragment>> cb, //ProcessLostFragmentsCb
                             long percentageOfLedgerFragmentToBeVerified) {
+        // 这里装着要复制的fragment
         // build a set of all fragment replicas
         final Set<LedgerFragment> fragments = new HashSet<LedgerFragment>();
 
+        // 这里主要作用是遍历出ledger的所有fragment，然后放入fragments中
+        //这里是遍历该ledger所有的entry
         Long curEntryId = null;
         List<BookieSocketAddress> curEnsemble = null;
         for (Map.Entry<Long, ? extends List<BookieSocketAddress>> e : lh
@@ -333,12 +365,18 @@ public class LedgerChecker {
                 for (int i = 0; i < curEnsemble.size(); i++) {
                     bookieIndexes.add(i);
                 }
+                //这里把遍历的所有fragment都放入fragments中
                 fragments.add(new LedgerFragment(lh, curEntryId,
                         e.getKey() - 1, bookieIndexes));
             }
             curEntryId = e.getKey();
             curEnsemble = e.getValue();
         }
+
+        //在某些情况下，检查分类帐的最后一部分可能很复杂。 在账本关闭的情况下，即使没有数据被写入，我们也可以正常检查段的片段。 在账本打开的情况下，但是已经写入了足够多的条目，
+        //对于 lastAddConfirmed 设置在段的开始条目之上，我们也可以正常检查。 但是，如果ledger是open的，有时lastAddConfirmed是不能被信任的，比如当它低于第一个条目id，
+        //或者根本没有设置时，我们无法确定是否有数据写入segment。 出于这个原因，我们必须向应该有第一个条目的博彩公司发送读取请求。 如果他们回复 NoSuchEntry，我们可以假设它从未被写入。
+        //如果他们回复任何其他内容，我们必须假设条目已写入，因此我们运行检查。
 
         /* Checking the last segment of the ledger can be complicated in some cases.
          * In the case that the ledger is closed, we can just check the fragments of
@@ -355,54 +393,69 @@ public class LedgerChecker {
          * else, we must assume the entry has been written, so we run the check.
          */
         if (curEntryId != null) {
+            //如果当前curEntryId不为null，那么就说明该ledger不是空ledger
             long lastEntry = lh.getLastAddConfirmed();
 
+            //如果该ledger还未关闭，并且curEntryId更大一些，那么久更新lastEntry
             if (!lh.isClosed() && lastEntry < curEntryId) {
                 lastEntry = curEntryId;
             }
 
+            // 遍历当前的ensemble，生产bookieIndexes集合
             Set<Integer> bookieIndexes = new HashSet<Integer>();
             for (int i = 0; i < curEnsemble.size(); i++) {
                 bookieIndexes.add(i);
             }
+            //最后一个fragment
             final LedgerFragment lastLedgerFragment = new LedgerFragment(lh, curEntryId,
                     lastEntry, bookieIndexes);
 
+            // 检查没有设置最后确认条目的情况
             // Check for the case that no last confirmed entry has been set
             if (curEntryId == lastEntry) {
                 final long entryToRead = curEntryId;
-
                 final EntryExistsCallback eecb = new EntryExistsCallback(lh.getLedgerMetadata().getWriteQuorumSize(),
                                               new GenericCallback<Boolean>() {
                                                   @Override
                                                   public void operationComplete(int rc, Boolean result) {
+                                                      //这里的result是代表该entry是否存在
+                                                      //这个回调，需要将getWriteQuorumSize副本都读完才会回调
                                                       if (result) {
+                                                          //result=true，代表存在，就直接加进去检查，如果不存在就不加进去，也就是说不检查，都不存在了，不管是不是副本全部丢失，都没办法复制了
                                                           fragments.add(lastLedgerFragment);
                                                       }
+                                                      // 否则就直接check了
                                                       checkFragments(fragments, cb,
                                                           percentageOfLedgerFragmentToBeVerified);
                                                   }
                                               });
 
+                // 这里写集合
                 DistributionSchedule.WriteSet writeSet = lh.getDistributionSchedule().getWriteSet(entryToRead);
                 for (int i = 0; i < writeSet.size(); i++) {
+                    // 这里获取写集合地址
                     BookieSocketAddress addr = curEnsemble.get(writeSet.get(i));
+                    //针对每一个副本都尝试读一下
                     bookieClient.readEntry(addr, lh.getId(), entryToRead,
                                            eecb, null, BookieProtocol.FLAG_NONE);
                 }
                 writeSet.recycle();
                 return;
             } else {
+                //将最后一个fragment加入集合
                 fragments.add(lastLedgerFragment);
             }
         }
+        //如果是走后面else
         checkFragments(fragments, cb, percentageOfLedgerFragmentToBeVerified);
     }
 
     private void checkFragments(Set<LedgerFragment> fragments,
                                 GenericCallback<Set<LedgerFragment>> cb,
                                 long percentageOfLedgerFragmentToBeVerified) {
+        //如果没有检查的就直接返回
         if (fragments.size() == 0) { // no fragments to verify
+            //注意这里传入的错误码是OK
             cb.operationComplete(BKException.Code.OK, fragments);
             return;
         }
@@ -410,9 +463,13 @@ public class LedgerChecker {
         // verify all the collected fragment replicas
         FullLedgerCallback allFragmentsCb = new FullLedgerCallback(fragments
                 .size(), cb);
+        //遍历每个fragment
         for (LedgerFragment r : fragments) {
             LOG.debug("Checking fragment {}", r);
             try {
+                //校验fragment
+                //percentageOfLedgerFragmentToBeVerified是要校验的fragment百分比，也就是要校验多少比例的fragment
+                //allFragmentsCb：这个是一个回调
                 verifyLedgerFragment(r, allFragmentsCb, percentageOfLedgerFragmentToBeVerified);
             } catch (InvalidFragmentException ife) {
                 LOG.error("Invalid fragment found : {}", r);
