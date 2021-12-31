@@ -130,6 +130,7 @@ public class BookieRequestProcessor implements RequestProcessor {
 
     private final boolean throttleReadResponses;
 
+    //
     public BookieRequestProcessor(ServerConfiguration serverCfg, Bookie bookie, StatsLogger statsLogger,
             SecurityHandlerFactory shFactory, ByteBufAllocator allocator) throws SecurityException {
         this.serverCfg = serverCfg;

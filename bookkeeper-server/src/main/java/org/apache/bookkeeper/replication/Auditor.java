@@ -727,16 +727,21 @@ public class Auditor implements AutoCloseable {
     }
 
     private void scheduleCheckAllLedgersTask(){
+        // 检查周期默认是1周
         long interval = conf.getAuditorPeriodicCheckInterval();
 
+        // 周期如果配置的大于0，那么才是生效的，否则就相当于是关闭该检查
         if (interval > 0) {
             LOG.info("Auditor periodic ledger checking enabled" + " 'auditorPeriodicCheckInterval' {} seconds",
                     interval);
-
+            // 检查所有ledger上次执行时间
             long checkAllLedgersLastExecutedCTime;
+            // 距离上次执行过了多久
             long durationSinceLastExecutionInSecs;
+            // 初始delay时间
             long initialDelay;
             try {
+                // 从zk上获取上次check的时间
                 checkAllLedgersLastExecutedCTime = ledgerUnderreplicationManager.getCheckAllLedgersCTime();
             } catch (UnavailableException ue) {
                 LOG.error("Got UnavailableException while trying to get checkAllLedgersCTime", ue);
