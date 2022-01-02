@@ -708,6 +708,7 @@ public class Auditor implements AutoCloseable {
             }
 
             scheduleBookieCheckTask();
+            //安排检查所有分类帐任务
             scheduleCheckAllLedgersTask();
             schedulePlacementPolicyCheckTask();
             scheduleReplicasCheckTask();
@@ -727,34 +728,46 @@ public class Auditor implements AutoCloseable {
     }
 
     private void scheduleCheckAllLedgersTask(){
+        //获取审计员定期检查间隔
+        //以秒为单位的间隔。 默认值为 604800（1 周）
         long interval = conf.getAuditorPeriodicCheckInterval();
 
+        //如果配置的检查周期小于0，那么就直接返回
         if (interval > 0) {
-            LOG.info("Auditor periodic ledger checking enabled" + " 'auditorPeriodicCheckInterval' {} seconds",
+            //审计员定期分类账检查已启用,检查周期配置auditorPeriodicCheckInterval=xxx秒
+            LOG.info("Auditor periodic ledger checking enabled 'auditorPeriodicCheckInterval' {} seconds",
                     interval);
 
+            //下面这三个时间是为了，计算initialDelay的，也就是算周期任务一开始的delay时间
+            // 检查上次执行的所有分类账，在每次检查后，都会在zk上创建或更新对应目录
             long checkAllLedgersLastExecutedCTime;
+            // 自上次执行以来的持续时间（秒）
             long durationSinceLastExecutionInSecs;
             long initialDelay;
             try {
+                //从zk上去读取上次执行的时间戳
                 checkAllLedgersLastExecutedCTime = ledgerUnderreplicationManager.getCheckAllLedgersCTime();
             } catch (UnavailableException ue) {
                 LOG.error("Got UnavailableException while trying to get checkAllLedgersCTime", ue);
                 checkAllLedgersLastExecutedCTime = -1;
             }
             if (checkAllLedgersLastExecutedCTime == -1) {
+                //如果为-1，就说明是第一次启动，那么第一次delay时间就为0，立即执行
                 durationSinceLastExecutionInSecs = -1;
                 initialDelay = 0;
             } else {
+                //计算距离上一次执行过了多久
                 durationSinceLastExecutionInSecs = (System.currentTimeMillis() - checkAllLedgersLastExecutedCTime)
                         / 1000;
                 if (durationSinceLastExecutionInSecs < 0) {
                     // this can happen if there is no strict time ordering
                     durationSinceLastExecutionInSecs = 0;
                 }
+                //这里就开始计算第一次执行时间了
                 initialDelay = durationSinceLastExecutionInSecs > interval ? 0
                         : (interval - durationSinceLastExecutionInSecs);
             }
+            //上面都是为了计算定期调度的几个参数的：checkAllLedgersLastExecutedCTime\durationSinceLastExecutionInSecs\initialDelay\interval
             LOG.info(
                     "checkAllLedgers scheduling info.  checkAllLedgersLastExecutedCTime: {} "
                             + "durationSinceLastExecutionInSecs: {} initialDelay: {} interval: {}",
@@ -764,15 +777,19 @@ public class Auditor implements AutoCloseable {
                 @Override
                 public void run() {
                     try {
+                        //先判断下是否开了复制功能,如果开启了就直接跳过
                         if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                             LOG.info("Ledger replication disabled, skipping checkAllLedgers");
                             return;
                         }
 
+                        //停止监听,这个会一直等待直到检查完毕
                         Stopwatch stopwatch = Stopwatch.createStarted();
                         LOG.info("Starting checkAllLedgers");
                         checkAllLedgers();
+                        //这里就在等待，并且可以直接借助Stopwatch类来计算耗时
                         long checkAllLedgersDuration = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS);
+                        //检查耗时通过日志和metric打印出来
                         LOG.info("Completed checkAllLedgers in {} milliSeconds", checkAllLedgersDuration);
                         checkAllLedgersTime.registerSuccessfulEvent(checkAllLedgersDuration, TimeUnit.MILLISECONDS);
                     } catch (KeeperException ke) {

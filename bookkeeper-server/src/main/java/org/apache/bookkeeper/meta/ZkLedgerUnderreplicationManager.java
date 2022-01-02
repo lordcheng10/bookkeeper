@@ -924,13 +924,17 @@ public class ZkLedgerUnderreplicationManager implements LedgerUnderreplicationMa
             LOG.debug("setCheckAllLedgersCTime");
         }
         try {
+            //获取acl
             List<ACL> zkAcls = ZkUtils.getACLs(conf);
+            //沟槽器
             CheckAllLedgersFormat.Builder builder = CheckAllLedgersFormat.newBuilder();
             builder.setCheckAllLedgersCTime(checkAllLedgersCTime);
             byte[] checkAllLedgersFormatByteArray = builder.build().toByteArray();
             if (zkc.exists(checkAllLedgersCtimeZnode, false) != null) {
+                //如果存在目录就更新
                 zkc.setData(checkAllLedgersCtimeZnode, checkAllLedgersFormatByteArray, -1);
             } else {
+                //如果不存在就创建
                 zkc.create(checkAllLedgersCtimeZnode, checkAllLedgersFormatByteArray, zkAcls, CreateMode.PERSISTENT);
             }
         } catch (KeeperException ke) {
