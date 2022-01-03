@@ -33,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 在单个 zk 节点中管理所有分类帐。
  * Manage all ledgers in a single zk node.
  *
  * <p>

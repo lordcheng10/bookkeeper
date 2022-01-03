@@ -565,8 +565,14 @@ public abstract class AbstractZkLedgerManager implements LedgerManager, Watcher 
                     return;
                 }
 
+                //第一个参数zkActiveLedgers.size()是代表要调用多少次，才调用最终的回调方法finalCb
+                //这个callback实际就是计算下完成次数，当调用完成次数等于存在的ledger数的时候，那么久直接调用最终callback finalCb进行结束调用
+                //但如果我此时把topic数据保留时间减少了呢，或者此时这段时间写入流量下降了，没有再增加，但过期的数据又被删除了呢，那这里岂不是有可能永远都调用不到最终call back方法了吗
+                //回答是不会，因为走到这一步此时的leder是全部放入到了zkActiveLedgers集合中了，那么久肯定会触发zkActiveLedgers.size次回调
                 MultiCallback mcb = new MultiCallback(zkActiveLedgers.size(), finalCb, ctx,
                                                       successRc, failureRc);
+
+                //开始循环检查所有leader
                 // start loop over all ledgers
                 scheduler.submit(() -> {
                     for (Long ledger : zkActiveLedgers) {

@@ -1166,13 +1166,16 @@ public class Auditor implements AutoCloseable {
 
     private CompletableFuture<?> publishSuspectedLedgersAsync(Collection<String> missingBookies, Set<Long> ledgers) {
         if (null == ledgers || ledgers.size() == 0) {
+            //如果ledgers集合为空，那么久直接返回
             // there is no ledgers available for this bookie and just
             // ignoring the bookie failures
             LOG.info("There is no ledgers for the failed bookie: {}", missingBookies);
             return FutureUtils.Void();
         }
         LOG.info("Following ledgers: {} of bookie: {} are identified as underreplicated", ledgers, missingBookies);
+        //这里会统计掉队的ledger数
         numUnderReplicatedLedger.registerSuccessfulValue(ledgers.size());
+        //underReplicatedSize类似automaticLong，保证原子操作，该变量是统计一个ledger数据有多大的，单位是byte
         LongAdder underReplicatedSize = new LongAdder();
         FutureUtils.processList(
                 Lists.newArrayList(ledgers),
@@ -1182,8 +1185,10 @@ public class Auditor implements AutoCloseable {
                             underReplicatedSize.add(metadata.getValue().getLength());
                         }
                     }), null);
+        //这里就将统计的大小放入metric中
         underReplicatedLedgerTotalSize.registerSuccessfulValue(underReplicatedSize.longValue());
 
+        //这里才是将掉队的ledger以及bookie记录到zk上，该方法的核心都在这里了
         return FutureUtils.processList(
             Lists.newArrayList(ledgers),
             ledgerId -> ledgerUnderreplicationManager.markLedgerUnderreplicatedAsync(ledgerId, missingBookies),
@@ -1206,29 +1211,38 @@ public class Auditor implements AutoCloseable {
         @Override
         public void operationComplete(int rc, Set<LedgerFragment> fragments) {
             if (rc == BKException.Code.OK) {
+                //也就是说只要传入的错误码是OK，那么久会任务这些fragments都有副本缺失 ，都需要进行检查
+                //这里将所有的fragment副本数总和都放入了集合bookies中
                 Set<BookieId> bookies = Sets.newHashSet();
                 for (LedgerFragment f : fragments) {
                     bookies.addAll(f.getAddresses());
                 }
                 if (bookies.isEmpty()) {
+                    //如果集合为空，就说明没有数据，直接回复callback返回
                     // no missing fragments
                     callback.processResult(Code.OK, null, null);
                     return;
                 }
+                //这里回把对应的bookieId集合和ledgerId一起传入该方法
                 publishSuspectedLedgersAsync(bookies.stream().map(BookieId::toString).collect(Collectors.toList()),
                     Sets.newHashSet(lh.getId())
                 ).whenComplete((result, cause) -> {
                     if (null != cause) {
+                        //如果完成过程有异常，那么久传入异常错误码ReplicationException
                         LOG.error("Auditor exception publishing suspected ledger {} with lost bookies {}",
                             lh.getId(), bookies, cause);
                         callback.processResult(Code.ReplicationException, null, null);
                     } else {
+                        //否则callback就传入OK错误码
                         callback.processResult(Code.OK, null, null);
                     }
                 });
             } else {
+                //如果有异常，那么久把对应错误码，放回callback中
                 callback.processResult(rc, null, null);
             }
+            //最会再关闭该ledger的处理类，异步关闭.这里直接把该ledger关闭，会不会有问题，比较前面的publishSuspectedLedgersAsync方法是异步的，可能还没完成
+            //不会出问题，因为lh在publishSuspectedLedgersAsync中已经不会再使用了
             lh.closeAsync().whenComplete((result, cause) -> {
                 if (null != cause) {
                     LOG.warn("Error closing ledger {} : {}", lh.getId(), cause.getMessage());
@@ -1258,19 +1272,27 @@ public class Auditor implements AutoCloseable {
     }
 
     /**
+     * 列出所有分类帐并单独检查它们。 这不应该经常运行。
+     *
      * List all the ledgers and check them individually. This should not
      * be run very often.
      */
     void checkAllLedgers() throws BKException, IOException, InterruptedException, KeeperException {
+        //本地客户端
         final BookKeeper localClient = getBookKeeper(conf);
+        //admin 客户端
         final BookKeeperAdmin localAdmin = getBookKeeperAdmin(localClient);
         try {
+            // ledger检查
             final LedgerChecker checker = new LedgerChecker(localClient);
-
+            //处理future
             final CompletableFuture<Void> processFuture = new CompletableFuture<>();
-
+            //这个是专门处理一个ledger的
+            //这里的callback实际就是一个MultiCallback对象，该对象构建时会传入ledgerManager.asyncProcessLedgers时，传入的final callback
+            //目的就是看被完成了多少次，如果ledger有100个，那么久需要完成100次callback，才可以执行到最终的final calback
             Processor<Long> checkLedgersProcessor = (ledgerId, callback) -> {
                 try {
+                    //如果没有开启复制，那么久会直接返回
                     if (!ledgerUnderreplicationManager.isLedgerReplicationEnabled()) {
                         LOG.info("Ledger rereplication has been disabled, aborting periodic check");
                         FutureUtils.complete(processFuture, null);
@@ -1283,8 +1305,12 @@ public class Auditor implements AutoCloseable {
                 }
 
                 try {
+                    // 这里说明ledger只能一个个去检查，因为只有在检查完成，回调的时候才进行释放信号量.感觉不需要限速呀，不还是需要限速，
+                    //这里只是在打开ledger后，就释放了该信号量,而且该信号量的最大并发默认值就是500个，也就是说打开也不是一个个打开的
+                    //尝试获取openLedgerNoRecoverySemaphore型号量,并且给定一个超时时间openLedgerNoRecoverySemaphoreWaitTimeoutMSec，超时时间默认是2min
                     if (!openLedgerNoRecoverySemaphore.tryAcquire(openLedgerNoRecoverySemaphoreWaitTimeoutMSec,
                         TimeUnit.MILLISECONDS)) {
+                        //如果没有获取到该信号量，那么久打印日志，并返回
                         LOG.warn("Failed to acquire semaphore for {} ms, ledgerId: {}",
                             openLedgerNoRecoverySemaphoreWaitTimeoutMSec, ledgerId);
                         FutureUtils.complete(processFuture, null);
@@ -1297,13 +1323,24 @@ public class Auditor implements AutoCloseable {
                     return;
                 }
 
+                //打开该ledger，在回调
                 localAdmin.asyncOpenLedgerNoRecovery(ledgerId, (rc, lh, ctx) -> {
+                    //当打开该ledger完成后，在这里释放掉信号量openLedgerNoRecoverySemaphore
                     openLedgerNoRecoverySemaphore.release();
                     if (Code.OK == rc) {
+                        //如果成功打开ledger，并且没有异常，那么就利用传入的ledgerhandler来读取相应信息进行检查
+                        //lh:是对应ledger的处理方法
+                        //ProcessLostFragmentsCb是专门处理lost fragment的回调
                         checker.checkLedger(lh,
+                                //那问题来了callback是哪个回调
+                                //这里的callback是MultiCallback包了一下最终的call back，也就是说这里的callback已经套了一层了。然后ProcessLostFragmentsCb又再套一层
                                 // the ledger handle will be closed after checkLedger is done.
                                 new ProcessLostFragmentsCb(lh, callback),
+                                //矫正的百分比
                                 conf.getAuditorLedgerVerificationPercentage());
+
+                        //下面更新metric
+                        //我们收集以下统计数据来衡量 bk 集群中单个账本的分布情况，片段/bookies 的数量越多，分布越多
                         // we collect the following stats to get a measure of the
                         // distribution of a single ledger within the bk cluster
                         // the higher the number of fragments/bookies, the more distributed it is
@@ -1311,32 +1348,41 @@ public class Auditor implements AutoCloseable {
                         numBookiesPerLedger.registerSuccessfulValue(lh.getNumBookies());
                         numLedgersChecked.inc();
                     } else if (Code.NoSuchLedgerExistsOnMetadataServerException == rc) {
+                        //如果报错异常没有该ledger，那么久走到这里
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Ledger {} was deleted before we could check it", ledgerId);
                         }
                         callback.processResult(Code.OK, null, null);
                     } else {
+                        //否则如果是其他异常，就走到这里，两者就打印的日志不一样
                         LOG.error("Couldn't open ledger {} to check : {}", ledgerId, BKException.getMessage(rc));
                         callback.processResult(rc, null, null);
                     }
                 }, null);
             };
 
+            //这里会打开所有ledger，然后通过传入的checkLedgersProcessor对每个ledger进行处理。
             ledgerManager.asyncProcessLedgers(checkLedgersProcessor,
                 (rc, path, ctx) -> {
+                    //如果处理成功的话，就传入rc=OK,否则就传入rc=ReadException错误码
                     if (Code.OK == rc) {
+                        //如果处理完成就直接调用processFuture完成，返回null
                         FutureUtils.complete(processFuture, null);
                     } else {
+                        //否则就通过processFuture返回异常
                         FutureUtils.completeExceptionally(processFuture, BKException.create(rc));
                     }
                 }, null, BKException.Code.OK, BKException.Code.ReadException);
+            //这里回一直等待processFuture完成，并通过handler方法BKException.HANDLER来对异常进行处理
             FutureUtils.result(processFuture, BKException.HANDLER);
+            //这里更新check时间戳
             try {
                 ledgerUnderreplicationManager.setCheckAllLedgersCTime(System.currentTimeMillis());
             } catch (UnavailableException ue) {
                 LOG.error("Got exception while trying to set checkAllLedgersCTime", ue);
             }
         } finally {
+            //这里关闭client和admin客户端
             localAdmin.close();
             localClient.close();
         }

@@ -255,16 +255,23 @@ public class BookkeeperInternalCallbacks {
      * the final callback with a provided failureRc
      */
     public static class MultiCallback implements AsyncCallback.VoidCallback {
+        //期待的回调次数
         // Number of expected callbacks
         final int expected;
+        //失败错误码
         final int failureRc;
+        //成功错误码
         final int successRc;
+        // 最终回调和要调用的相应上下文
         // Final callback and the corresponding context to invoke
         final AsyncCallback.VoidCallback cb;
         final Object context;
+        //回调执行线程池
         final ExecutorService callbackExecutor;
+        //这会跟踪完成了多少操作
         // This keeps track of how many operations have completed
         final AtomicInteger done = new AtomicInteger();
+        // 未成功完成的操作的异常列表
         // List of the exceptions from operations that completed unsuccessfully
         final LinkedBlockingQueue<Integer> exceptions = new LinkedBlockingQueue<Integer>();
 
@@ -281,6 +288,7 @@ public class BookkeeperInternalCallbacks {
             this.failureRc = failureRc;
             this.successRc = successRc;
             this.callbackExecutor = callbackExecutor;
+            //如果期待的次数为0，那么久立即调用回调
             if (expected == 0) {
                 callback();
             }
@@ -288,12 +296,14 @@ public class BookkeeperInternalCallbacks {
 
         private void tick() {
             if (done.incrementAndGet() == expected) {
+                //如果完成次数，等于期待的次数，那么久掉用回调方法
                 callback();
             }
         }
 
         private void callback() {
             if (null != callbackExecutor) {
+                //如果回调的线程池不为null，那么久让线程池去完成
                 try {
                     callbackExecutor.submit(new Runnable() {
                         @Override
@@ -302,28 +312,34 @@ public class BookkeeperInternalCallbacks {
                         }
                     });
                 } catch (RejectedExecutionException ree) {
+                    //一旦有异常，那么就直接调用doCallback，不用线程池执行了
                     // if the callback executor is shutdown, do callback in same thread
                     doCallback();
                 }
             } else {
+                //如果没有传入线程池，那么久直接调用doCallback
                 doCallback();
             }
         }
 
         private void doCallback() {
             if (exceptions.isEmpty()) {
+                //如果没有异常，那么久回复正常错误码
                 cb.processResult(successRc, null, context);
             } else {
                 cb.processResult(failureRc, null, context);
             }
         }
 
+        //先是调用该方法
         @Override
         public void processResult(int rc, String path, Object ctx) {
             if (rc != successRc) {
+                //如果错误码不是成功，那么久加入到exceptions中
                 LOG.error("Error in multi callback : " + rc);
                 exceptions.add(rc);
             }
+            //打钩
             tick();
         }
 

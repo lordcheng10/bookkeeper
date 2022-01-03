@@ -327,6 +327,10 @@ public class BookKeeperAdmin implements AutoCloseable {
     }
 
     /**
+     * 以管理员身份打开分类帐而不恢复分类帐。
+     * 这意味着不进行摘要密码检查。
+     * 否则，调用与 BookKeeper#asyncOpenLedgerNoRecovery 相同
+     *
      * Open a ledger as an administrator without recovering the ledger. This means
      * that no digest password  checks are done. Otherwise, the call is identical
      * to BookKeeper#asyncOpenLedgerNoRecovery

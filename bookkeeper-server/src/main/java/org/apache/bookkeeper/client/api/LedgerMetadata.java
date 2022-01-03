@@ -72,6 +72,11 @@ public interface LedgerMetadata {
     long getLastEntryId();
 
     /**
+     * 所谓的长度实际就是该ledger的数据大小，单位是bytes
+     * 返回此分类帐的长度。
+     *   <p>如果此分类帐未密封 {@link #isClosed()}，则返回 {@code 0}。
+     *   @return 这个账本的长度，如果它是密封的，否则为 0。
+     *
      * Returns the length of this ledger.
      *
      * <p>If this ledger is not sealed {@link #isClosed()}, it returns {@code 0}.

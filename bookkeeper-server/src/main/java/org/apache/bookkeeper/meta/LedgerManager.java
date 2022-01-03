@@ -123,6 +123,10 @@ public interface LedgerManager extends Closeable {
     void unregisterLedgerMetadataListener(long ledgerId, LedgerMetadataListener listener);
 
     /**
+     * 循环处理所有分类帐。 处理完所有分类帐后，将触发 finalCb：
+     *   如果所有分类帐都处理完毕并完成，则成功 rc 将传递给 finalCb。
+     *   如果某些分类帐处理失败，则失败 rc 将传递给 finalCb。
+     *
      * Loop to process all ledgers.
      * <p>
      * <ul>

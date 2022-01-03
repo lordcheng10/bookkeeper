@@ -142,6 +142,9 @@ public interface LedgerUnderreplicationManager extends AutoCloseable {
             throws ReplicationException.UnavailableException;
 
     /**
+     * 检查是否启用了账本复制。 如果启用了分类帐复制，这将返回 true，否则返回 false。
+     *   @return - 如果启用则返回 true 否则返回 false
+     *
      * Check whether the ledger replication is enabled or not. This will return
      * true if the ledger replication is enabled, otherwise return false.
      *
