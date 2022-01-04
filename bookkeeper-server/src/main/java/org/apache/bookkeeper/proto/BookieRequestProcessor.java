@@ -62,6 +62,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
+ * bookkeeper服务端请求处理逻辑
  * An implementation of the RequestProcessor interface.
  */
 @Getter(AccessLevel.PACKAGE)
