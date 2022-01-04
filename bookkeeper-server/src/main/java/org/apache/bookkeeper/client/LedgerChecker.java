@@ -216,9 +216,9 @@ public class LedgerChecker {
                                       GenericCallback<LedgerFragment> cb,
                                       long percentageOfLedgerFragmentToBeVerified)
             throws InvalidFragmentException {
-        //获取第一个entry id
+        //获取该bookie上该fragment的第一个entry id
         long firstStored = fragment.getFirstStoredEntryId(bookieIndex);
-        //最后一个entry id
+        //获取该bookie上该fragment的最后一个entry id
         long lastStored = fragment.getLastStoredEntryId(bookieIndex);
 
         //根据bookieIndex获取bookieId
