@@ -937,6 +937,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 在客户端无响应的情况下，超时控制等待响应发送.
      * Timeout controlling wait on response send in case of unresponsive client
      * (i.e. client in long GC etc.)
      *

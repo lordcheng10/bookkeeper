@@ -149,6 +149,7 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
         log.info("Creating single directory db ledger storage on {}", baseDir);
 
         this.writeCacheMaxSize = writeCacheSize;
+        //写cache分成两半了？
         this.writeCache = new WriteCache(allocator, writeCacheMaxSize / 2);
         this.writeCacheBeingFlushed = new WriteCache(allocator, writeCacheMaxSize / 2);
 
@@ -321,13 +322,16 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
         long stamp = writeCacheRotationLock.tryOptimisticRead();
         boolean inserted = false;
 
+        //先尝试着往cache里放
         inserted = writeCache.put(ledgerId, entryId, entry);
         if (!writeCacheRotationLock.validate(stamp)) {
+            //写入缓存在我们插入时旋转。 我们需要获取正确的读锁并重复该操作，因为我们可能已经插入了一个已经被刷新和清除的写缓存，而不确定最后一个条目是否被刷新。
             // The write cache was rotated while we were inserting. We need to acquire the proper read lock and repeat
             // the operation because we might have inserted in a write cache that was already being flushed and cleared,
             // without being sure about this last entry being flushed or not.
             stamp = writeCacheRotationLock.readLock();
             try {
+                //为啥这里有放了一次
                 inserted = writeCache.put(ledgerId, entryId, entry);
             } finally {
                 writeCacheRotationLock.unlockRead(stamp);
@@ -345,16 +349,21 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
         return entryId;
     }
 
+    //触发flush
     private void triggerFlushAndAddEntry(long ledgerId, long entryId, ByteBuf entry)
             throws IOException, BookieException {
         dbLedgerStorageStats.getThrottledWriteRequests().inc();
+        //默认maxThrottleTimeNanos是10秒
         long absoluteTimeoutNanos = System.nanoTime() + maxThrottleTimeNanos;
 
+        //相当于超时时间是maxThrottleTimeNanos，超过10秒，不管完成没都会退出循环
         while (System.nanoTime() < absoluteTimeoutNanos) {
+            // 写入缓存已满，我们需要触发一次刷新以使其轮换如果已经触发了刷新或者刷新已经切换了缓存，我们不需要触发另一个刷新
             // Write cache is full, we need to trigger a flush so that it gets rotated
             // If the flush has already been triggered or flush has already switched the
             // cache, we don't need to trigger another flush
             if (!isFlushOngoing.get() && hasFlushBeenTriggered.compareAndSet(false, true)) {
+                // 在后台触发早期刷新
                 // Trigger an early flush in background
                 log.info("Write cache is full, triggering flush");
                 executor.execute(() -> {
@@ -592,6 +601,7 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
         flushMutex.lock();
 
         try {
+            //交换cache
             // Swap the write cache so that writes can continue to happen while the flush is
             // ongoing
             swapWriteCache();

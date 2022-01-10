@@ -44,11 +44,14 @@ public interface BookKeeperServerStats {
     //
 
     // Stats
+    //这个是处理完写请求，包括回复客户端response耗时的统计耗时
     String ADD_ENTRY_REQUEST = "ADD_ENTRY_REQUEST";
+    //这个应该是写成功耗时统计
     String ADD_ENTRY = "ADD_ENTRY";
     String FORCE_LEDGER_REQUEST = "FORCE_LEDGER_REQUEST";
     String FORCE_LEDGER = "FORCE_LEDGER";
     String READ_ENTRY_REQUEST = "READ_ENTRY_REQUEST";
+    //读bookie速度
     String READ_ENTRY = "READ_ENTRY";
     String READ_ENTRY_SCHEDULING_DELAY = "READ_ENTRY_SCHEDULING_DELAY";
     String READ_ENTRY_FENCE_REQUEST = "READ_ENTRY_FENCE_REQUEST";

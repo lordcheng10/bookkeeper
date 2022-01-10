@@ -54,12 +54,14 @@ public abstract class PacketProcessorBaseV3 extends SafeRunnable {
 
     protected void sendResponse(StatusCode code, Object response, OpStatsLogger statsLogger) {
         final long writeNanos = MathUtils.nowInNano();
-
+        //默认waitTimeoutOnResponseBackpressureMs为-1
         final long timeOut = requestProcessor.getWaitTimeoutOnBackpressureMillis();
         if (timeOut >= 0 && !channel.isWritable()) {
+            //看该客户端是否是在黑名单内，如果不是才进入if
             if (!requestProcessor.isBlacklisted(channel)) {
                 synchronized (channel) {
                     if (!channel.isWritable() && !requestProcessor.isBlacklisted(channel)) {
+                        //如果该channel不是可写，并且该channel没有在黑名单内,那么久等待一段时间timeOut
                         final long waitUntilNanos = writeNanos + TimeUnit.MILLISECONDS.toNanos(timeOut);
                         while (!channel.isWritable() && MathUtils.nowInNano() < waitUntilNanos) {
                             try {
@@ -69,7 +71,9 @@ public abstract class PacketProcessorBaseV3 extends SafeRunnable {
                             }
                         }
                         if (!channel.isWritable()) {
+                            //如果是不可写的，那么久会放入黑名单，下次恢复的时候，会等待一段时间
                             requestProcessor.blacklistChannel(channel);
+                            //并且记录到不可写集合中
                             requestProcessor.handleNonWritableChannel(channel);
                         }
                     }
@@ -77,28 +81,36 @@ public abstract class PacketProcessorBaseV3 extends SafeRunnable {
             }
 
             if (!channel.isWritable()) {
+                //如果是不可写的,就会统计下不可写耗时
                 LOGGER.warn("cannot write response to non-writable channel {} for request {}", channel,
                         StringUtils.requestToString(request));
                 requestProcessor.getRequestStats().getChannelWriteStats()
                         .registerFailedEvent(MathUtils.elapsedNanos(writeNanos), TimeUnit.NANOSECONDS);
                 statsLogger.registerFailedEvent(MathUtils.elapsedNanos(enqueueNanos), TimeUnit.NANOSECONDS);
+                //这里就直接返回，因为是不可写的channel，那么回复肯定会失败，所以就不用回复了
                 return;
             } else {
+                //如果是可写的，那么就从黑名单中去掉该channel
                 requestProcessor.invalidateBlacklist(channel);
             }
         }
 
+        //这里才是真正回复response
         channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
+                //这里统计了单纯的回复response耗时
                 long writeElapsedNanos = MathUtils.elapsedNanos(writeNanos);
                 if (!future.isSuccess()) {
+                    //如果是不成功，那么久统计不成功耗时
                     requestProcessor.getRequestStats().getChannelWriteStats()
                         .registerFailedEvent(writeElapsedNanos, TimeUnit.NANOSECONDS);
                 } else {
+                    //陈宫了就统计成功耗时
                     requestProcessor.getRequestStats().getChannelWriteStats()
                         .registerSuccessfulEvent(writeElapsedNanos, TimeUnit.NANOSECONDS);
                 }
+                //这里统计整个写请求处理耗时,对应的是ADD_ENTRY_REQUEST
                 if (StatusCode.EOK == code) {
                     statsLogger.registerSuccessfulEvent(MathUtils.elapsedNanos(enqueueNanos), TimeUnit.NANOSECONDS);
                 } else {

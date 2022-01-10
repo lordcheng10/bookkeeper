@@ -32,6 +32,7 @@ import java.util.PrimitiveIterator.OfLong;
 import org.apache.bookkeeper.common.util.Watcher;
 
 /**
+ * 在 bookie 中实现一个账本。 特别是，它实现了将条目写入分类帐和从分类帐读取条目的操作。
  * Implements a ledger inside a bookie. In particular, it implements operations
  * to write entries to a ledger and read entries from a ledger.
  */
@@ -40,6 +41,7 @@ public abstract class LedgerDescriptor {
     static LedgerDescriptor create(byte[] masterKey,
                                    long ledgerId,
                                    LedgerStorage ledgerStorage) throws IOException {
+        //这里就是简单的创建一个LedgerDescriptor对象
         LedgerDescriptor ledger = new LedgerDescriptorImpl(masterKey, ledgerId, ledgerStorage);
         ledgerStorage.setMasterKey(ledgerId, masterKey);
         return ledger;

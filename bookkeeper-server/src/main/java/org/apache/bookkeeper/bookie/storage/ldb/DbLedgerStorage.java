@@ -67,6 +67,7 @@ import org.apache.commons.lang3.StringUtils;
 
 
 /**
+ * 这个类就是用来管理各个存储目录的
  * Implementation of LedgerStorage that uses RocksDB to keep the indexes for entries stored in EntryLogs.
  */
 @Slf4j
@@ -85,6 +86,7 @@ public class DbLedgerStorage implements LedgerStorage {
     private static final long DEFAULT_READ_CACHE_MAX_SIZE_MB = (long) (0.25 * PlatformDependent.maxDirectMemory())
             / MB;
     private int numberOfDirs;
+    //这里记录了各个存储目录
     private List<SingleDirectoryDbLedgerStorage> ledgerStorageList;
 
     // Keep 1 single Bookie GC thread so the the compactions from multiple individual directories are serialized
@@ -97,6 +99,7 @@ public class DbLedgerStorage implements LedgerStorage {
     public void initialize(ServerConfiguration conf, LedgerManager ledgerManager, LedgerDirsManager ledgerDirsManager,
             LedgerDirsManager indexDirsManager, StateManager stateManager, CheckpointSource checkpointSource,
             Checkpointer checkpointer, StatsLogger statsLogger, ByteBufAllocator allocator) throws IOException {
+        //总的写cache大小，默认是1/4堆外内存大小
         long writeCacheMaxSize = getLongVariableOrDefault(conf, WRITE_CACHE_MAX_SIZE_MB,
                 DEFAULT_WRITE_CACHE_MAX_SIZE_MB) * MB;
         long readCacheMaxSize = getLongVariableOrDefault(conf, READ_AHEAD_CACHE_MAX_SIZE_MB,
@@ -114,6 +117,7 @@ public class DbLedgerStorage implements LedgerStorage {
             throw new IOException("Read and write cache sizes exceed the configured max direct memory size");
         }
 
+        //每个目录对应的cache大小
         long perDirectoryWriteCacheSize = writeCacheMaxSize / numberOfDirs;
         long perDirectoryReadCacheSize = readCacheMaxSize / numberOfDirs;
 
@@ -266,6 +270,7 @@ public class DbLedgerStorage implements LedgerStorage {
     }
 
     private SingleDirectoryDbLedgerStorage getLedgerSorage(long ledgerId) {
+        //这里是用ledgerId和目录数hash得到该ledger对应的存储目录
         return ledgerStorageList.get(MathUtils.signSafeMod(ledgerId, numberOfDirs));
     }
 

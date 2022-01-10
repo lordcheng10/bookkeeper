@@ -1294,6 +1294,9 @@ public class Bookie extends BookieCriticalThread {
     }
 
     /**
+     * 检索应添加条目的分类帐的分类帐描述符。
+     * 从这个方法返回的 LedgerDescriptor 最终应该被释放.
+     *
      * Retrieve the ledger descriptor for the ledger which entry should be added to.
      * The LedgerDescriptor returned from this method should be eventually freed with
      * #putHandle().
@@ -1303,8 +1306,9 @@ public class Bookie extends BookieCriticalThread {
     @VisibleForTesting
     LedgerDescriptor getLedgerForEntry(ByteBuf entry, final byte[] masterKey)
             throws IOException, BookieException {
+        //获取lederId
         final long ledgerId = entry.getLong(entry.readerIndex());
-
+        //根据ledger id和key来构建LedgerDescriptor
         return handles.getHandle(ledgerId, masterKey);
     }
 
@@ -1439,14 +1443,19 @@ public class Bookie extends BookieCriticalThread {
     }
 
     /**
+     * 写一个entry到ledger中
      * Add entry to a ledger.
      */
     public void addEntry(ByteBuf entry, boolean ackBeforeSync, WriteCallback cb, Object ctx, byte[] masterKey)
             throws IOException, BookieException, InterruptedException {
+        //记录开始时间
         long requestNanos = MathUtils.nowInNano();
+        //记录是否成功
         boolean success = false;
+        //计算下entry size
         int entrySize = 0;
         try {
+            //分类帐描述符
             LedgerDescriptor handle = getLedgerForEntry(entry, masterKey);
             synchronized (handle) {
                 if (handle.isFenced()) {

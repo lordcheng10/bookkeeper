@@ -62,6 +62,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
+ * 专门处理bookkeeper  服务端请求的方法类
  * An implementation of the RequestProcessor interface.
  */
 @Getter(AccessLevel.PACKAGE)
@@ -206,6 +207,7 @@ public class BookieRequestProcessor implements RequestProcessor {
 
     protected void onAddRequestStart(Channel channel) {
         if (addsSemaphore != null) {
+            //这里回获取信号量,这里是在控制写入的并发处理请求数，默认maxAddsInProgressLimit配置是0，也就是不进行限制
             if (!addsSemaphore.tryAcquire()) {
                 final long throttlingStartTimeNanos = MathUtils.nowInNano();
                 channel.config().setAutoRead(false);
@@ -222,8 +224,10 @@ public class BookieRequestProcessor implements RequestProcessor {
     }
 
     protected void onAddRequestFinish() {
+        //正在处理的请求计数减1
         requestStats.untrackAddRequest();
         if (addsSemaphore != null) {
+            //释放信号量
             addsSemaphore.release();
         }
     }
@@ -309,6 +313,7 @@ public class BookieRequestProcessor implements RequestProcessor {
                 BookkeeperProtocol.BKPacketHeader header = r.getHeader();
                 switch (header.getOperation()) {
                     case ADD_ENTRY:
+                        //处理写请求
                         processAddRequestV3(r, c);
                         break;
                     case READ_ENTRY:
@@ -421,8 +426,10 @@ public class BookieRequestProcessor implements RequestProcessor {
     }
 
     private void processAddRequestV3(final BookkeeperProtocol.Request r, final Channel c) {
+        //写请求处理类
         WriteEntryProcessorV3 write = new WriteEntryProcessorV3(r, c, this);
 
+        //看是否配置了写线程池或者是高优先级的写请求交给特定的线程池处理
         final OrderedExecutor threadPool;
         if (RequestUtils.isHighPriority(r)) {
             threadPool = highPriorityThreadPool;
@@ -431,11 +438,14 @@ public class BookieRequestProcessor implements RequestProcessor {
         }
 
         if (null == threadPool) {
+            //如果没有设置写线程数，那么久交给当前线程处理
             write.run();
         } else {
+            //否则的话就交给对应线程池处理
             try {
                 threadPool.executeOrdered(r.getAddRequest().getLedgerId(), write);
             } catch (RejectedExecutionException e) {
+                //当线程池满了，那么就直接回错误异常
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Failed to process request to add entry at {}:{}. Too many pending requests",
                               r.getAddRequest().getLedgerId(), r.getAddRequest().getEntryId());

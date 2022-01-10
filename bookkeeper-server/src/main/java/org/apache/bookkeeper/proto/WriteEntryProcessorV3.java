@@ -53,20 +53,25 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
 
     // Returns null if there is no exception thrown
     private AddResponse getAddResponse() {
+        //记录开始时间
         final long startTimeNanos = MathUtils.nowInNano();
+        //add请求
         AddRequest addRequest = request.getAddRequest();
+        //这里主要是在构建AddResponseBuilder
         long ledgerId = addRequest.getLedgerId();
         long entryId = addRequest.getEntryId();
-
         final AddResponse.Builder addResponse = AddResponse.newBuilder()
                 .setLedgerId(ledgerId)
                 .setEntryId(entryId);
 
+        //判断版本是否兼容,看起来bookkeeper没有完全的向下兼容
         if (!isVersionCompatible()) {
+            //如果不兼容，就直接返回EBADVERSION错误码
             addResponse.setStatus(StatusCode.EBADVERSION);
             return addResponse.build();
         }
 
+        //如果该bookie节点是只读的并且该请求不是高优的写的，或当前bookie不是提供高优写的，那么也会以EREADONLY的错误码直接返回
         if (requestProcessor.getBookie().isReadOnly()
             && !(RequestUtils.isHighPriority(request)
                     && requestProcessor.getBookie().isAvailableForHighPriorityWrites())) {
@@ -75,18 +80,22 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
             return addResponse.build();
         }
 
+        //构建response请求的回调方法
         BookkeeperInternalCallbacks.WriteCallback wcb = new BookkeeperInternalCallbacks.WriteCallback() {
             @Override
             public void writeComplete(int rc, long ledgerId, long entryId,
                                       BookieId addr, Object ctx) {
                 if (BookieProtocol.EOK == rc) {
+                    //如果成功了,那么统计下耗时,这里只是统计了写成功耗时，还未包含回复response的耗时
                     requestProcessor.getRequestStats().getAddEntryStats()
                         .registerSuccessfulEvent(MathUtils.elapsedNanos(startTimeNanos), TimeUnit.NANOSECONDS);
                 } else {
+                    //这里失败了，也会统计下耗时,这里的成功和失败，会通过其中的一个success标签来标记
                     requestProcessor.getRequestStats().getAddEntryStats()
                         .registerFailedEvent(MathUtils.elapsedNanos(startTimeNanos), TimeUnit.NANOSECONDS);
                 }
 
+                //计算回复response的错误码
                 StatusCode status;
                 switch (rc) {
                     case BookieProtocol.EOK:
@@ -100,28 +109,38 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
                         break;
                 }
                 addResponse.setStatus(status);
+                //构建response
                 Response.Builder response = Response.newBuilder()
                         .setHeader(getHeader())
                         .setStatus(addResponse.getStatus())
                         .setAddResponse(addResponse);
                 Response resp = response.build();
+                //回复response
                 sendResponse(status, resp, requestProcessor.getRequestStats().getAddRequestStats());
             }
         };
+
+
+        //判断是否有写flag
         final EnumSet<WriteFlag> writeFlags;
         if (addRequest.hasWriteFlags()) {
             writeFlags = WriteFlag.getWriteFlags(addRequest.getWriteFlags());
         } else {
             writeFlags = WriteFlag.NONE;
         }
+        //在同步之前ack
         final boolean ackBeforeSync = writeFlags.contains(WriteFlag.DEFERRED_SYNC);
         StatusCode status = null;
+        //获取key，整个key是啥
         byte[] masterKey = addRequest.getMasterKey().toByteArray();
+        //这里获取要写入的数据
         ByteBuf entryToAdd = Unpooled.wrappedBuffer(addRequest.getBody().asReadOnlyByteBuffer());
         try {
+            //看看是否是recovery的写
             if (RequestUtils.hasFlag(addRequest, AddRequest.Flag.RECOVERY_ADD)) {
                 requestProcessor.getBookie().recoveryAddEntry(entryToAdd, wcb, channel, masterKey);
             } else {
+                //不是recovery的写，就是客户端的写
                 requestProcessor.getBookie().addEntry(entryToAdd, ackBeforeSync, wcb, channel, masterKey);
             }
             status = StatusCode.EOK;
@@ -151,12 +170,14 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
             status = StatusCode.EBADREQ;
         }
 
+        //如果错误码不为OK，那么久设置好错误码，然后返回response
         // If everything is okay, we return null so that the calling function
         // doesn't return a response back to the caller.
         if (!status.equals(StatusCode.EOK)) {
             addResponse.setStatus(status);
             return addResponse.build();
         }
+        //如果都是OK的，那么久返回null
         return null;
     }
 
@@ -164,6 +185,8 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
     public void safeRun() {
         AddResponse addResponse = getAddResponse();
         if (null != addResponse) {
+            //如果不为null，那么久说明是有错误的，那么这里回构建response进行发送.
+            //因为在写完成的回调里面，没有对有异常的写进行处理
             // This means there was an error and we should send this back.
             Response.Builder response = Response.newBuilder()
                     .setHeader(getHeader())
@@ -177,7 +200,9 @@ class WriteEntryProcessorV3 extends PacketProcessorBaseV3 {
 
     @Override
     protected void sendResponse(StatusCode code, Object response, OpStatsLogger statsLogger) {
+        //先回复response
         super.sendResponse(code, response, statsLogger);
+        //释放信号量和正在处理的add请求书减1
         requestProcessor.onAddRequestFinish();
     }
 

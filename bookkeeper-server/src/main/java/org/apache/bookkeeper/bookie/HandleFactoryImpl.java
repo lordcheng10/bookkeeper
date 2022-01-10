@@ -42,9 +42,11 @@ class HandleFactoryImpl implements HandleFactory, LedgerDeletionListener {
 
     @Override
     public LedgerDescriptor getHandle(final long ledgerId, final byte[] masterKey) throws IOException, BookieException {
+        //这里是一个map，记录了每个ledger对应的LedgerDescriptor
         LedgerDescriptor handle = ledgers.get(ledgerId);
 
         if (handle == null) {
+            //如果该map中不存在该ledger，那么久创建
             handle = LedgerDescriptor.create(masterKey, ledgerId, ledgerStorage);
             ledgers.putIfAbsent(ledgerId, handle);
         }

@@ -318,7 +318,9 @@ public class RequestStats {
     }
 
     void trackAddRequest() {
+        //正在处理的add请求+1
         final int curr = addsInProgress.incrementAndGet();
+        //统计运行过程中出现的服务端处理写请求的最大并行数
         maxAddsInProgress.accumulateAndGet(curr, Integer::max);
     }
 
