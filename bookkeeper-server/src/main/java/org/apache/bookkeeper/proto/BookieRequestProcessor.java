@@ -654,10 +654,13 @@ public class BookieRequestProcessor implements RequestProcessor {
     }
 
     private void processReadRequest(final BookieProtocol.ReadRequest r, final Channel c) {
+        //fence线程池
         ExecutorService fenceThreadPool =
                 null == highPriorityThreadPool ? null : highPriorityThreadPool.chooseThread(c);
+        //创建读处理对象
         ReadEntryProcessor read = ReadEntryProcessor.create(r, c, this, fenceThreadPool, throttleReadResponses);
 
+        // 如果它是高优先级读取（隔离或作为恢复过程的一部分），我们希望确保它尽快执行，因此绕过正常的 readThreadPool 并在 highPriorityThreadPool 中执行
         // If it's a high priority read (fencing or as part of recovery process), we want to make sure it
         // gets executed as fast as possible, so bypass the normal readThreadPool
         // and execute in highPriorityThreadPool
