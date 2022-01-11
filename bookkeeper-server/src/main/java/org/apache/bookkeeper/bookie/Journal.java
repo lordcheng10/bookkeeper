@@ -651,6 +651,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     private final long bufferedWritesThreshold;
     // should we flush if the queue is empty
     private final boolean flushWhenQueueEmpty;
+    // 我们是否应该提示文件系统在强制写入后从缓存中删除页面
     // should we hint the filesystem to remove pages from cache after force write
     private final boolean removePagesFromCache;
     private final int journalFormatVersionToWrite;

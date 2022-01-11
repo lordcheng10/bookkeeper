@@ -206,12 +206,14 @@ public class BufferedChannel extends BufferedReadChannel implements Closeable {
     }
 
     /**
+     * 强制执行同步操作，以便将数据持久保存到磁盘。
      * force a sync operation so that data is persisted to the disk.
      * @param forceMetadata
      * @return
      * @throws IOException
      */
     public long forceWrite(boolean forceMetadata) throws IOException {
+        // 这是我们在发出此强制写入之前已刷新到文件系统页面缓存的点，因此保证通过强制写入保持持久，在此之后发生的任何刷新可能会或可能不会被刷新
         // This is the point up to which we had flushed to the file system page cache
         // before issuing this force write hence is guaranteed to be made durable by
         // the force write, any flush that happens after this may or may
