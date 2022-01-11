@@ -21,6 +21,7 @@ import io.netty.util.Recycler.Handle;
 import java.util.ArrayList;
 
 /**
+ * 一个可回收的简单清单。
  * A simple list which is recyclable.
  */
 public final class RecyclableArrayList<T> extends ArrayList<T> {
@@ -28,6 +29,7 @@ public final class RecyclableArrayList<T> extends ArrayList<T> {
     private static final int DEFAULT_INITIAL_CAPACITY = 8;
 
     /**
+     * 一个 ArrayList 回收器。
      * An ArrayList recycler.
      */
     public static class Recycler<X>

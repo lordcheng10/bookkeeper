@@ -131,6 +131,8 @@ public class WriteCache implements Closeable {
     public boolean put(long ledgerId, long entryId, ByteBuf entry) {
         int size = entry.readableBytes();
 
+        // 对齐到 64 字节，这样不同的线程就不会争用相同的 L1 缓存行
+        // 这里算下来应该
         // Align to 64 bytes so that different threads will not contend the same L1
         // cache line
         int alignedSize = align64(size);
@@ -140,23 +142,29 @@ public class WriteCache implements Closeable {
         int segmentIdx;
 
         while (true) {
+            //全局偏移量,一开始是最大的那个全局偏移
             offset = cacheOffset.getAndAdd(alignedSize);
+            //单个segment内部的偏移量
             localOffset = (int) (offset & segmentOffsetMask);
             segmentIdx = (int) (offset >>> segmentOffsetBits);
 
             if ((offset + size) > maxCacheSize) {
+                //如果满了就直接返回
                 // Cache is full
                 return false;
-            } else if (maxSegmentSize - localOffset < size) {
+            } else if (maxSegmentSize - localOffset < size) {//这里有没可能死循环，maxSegmentSize<size时?不会，如果是这种情况，会走到break里面,会不会所有的segment都
+                // 如果条目位于段的末尾，我们需要获取新的偏移量并在下一个段重试,也就是在下一轮运行的时候，offset偏移量会发生改变，再次走到这里判断的时候，会重新选下一个segment
                 // If an entry is at the end of a segment, we need to get a new offset and try
                 // again in next segment
                 continue;
             } else {
+                // 找到一个好的偏移量
                 // Found a good offset
                 break;
             }
         }
 
+        //这里才是放入cache
         cacheSegments[segmentIdx].setBytes(localOffset, entry, entry.readerIndex(), entry.readableBytes());
 
         // Update last entryId for ledger. This logic is to handle writes for the same

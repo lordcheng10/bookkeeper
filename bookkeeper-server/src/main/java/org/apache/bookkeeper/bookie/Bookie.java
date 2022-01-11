@@ -765,6 +765,7 @@ public class Bookie extends BookieCriticalThread {
             }
         }
 
+        //这里一个journal目录就会初始化一个journal对象
         // instantiate the journals
         journals = Lists.newArrayList();
         for (int i = 0; i < journalDirectories.size(); i++) {
@@ -1061,6 +1062,7 @@ public class Bookie extends BookieCriticalThread {
          */
         syncThread.start();
 
+        //这里启动bookie线程，在这个线程里会去启动journal线程
         // start bookie thread
         super.start();
 
@@ -1180,6 +1182,7 @@ public class Bookie extends BookieCriticalThread {
     public void run() {
         // bookie thread wait for journal thread
         try {
+            //启动journal线程
             // start journals
             for (Journal journal: journals) {
                 journal.start();
@@ -1322,17 +1325,22 @@ public class Bookie extends BookieCriticalThread {
     private void addEntryInternal(LedgerDescriptor handle, ByteBuf entry,
                                   boolean ackBeforeSync, WriteCallback cb, Object ctx, byte[] masterKey)
             throws IOException, BookieException, InterruptedException {
+        //获取ledger id
         long ledgerId = handle.getLedgerId();
+        //这里cache和刷数据盘,这里耗时
         long entryId = handle.addEntry(entry);
-
         bookieStats.getWriteBytes().add(entry.readableBytes());
 
+        //journal `addEntry` 应该在条目添加到分类帐存储之后发生。 否则，日记帐分录可能会在分类帐存储中创建分类帐之前滚动。
+        // 简单来说就是：如果先写journal再写ledger数据文件，那么journal里面记录的可写入的ledger文件就不确定了，不能简单用当前的文件，因为文件有可能会发生轮转
         // journal `addEntry` should happen after the entry is added to ledger storage.
         // otherwise the journal entry can potentially be rolled before the ledger is created in ledger storage.
         if (masterKeyCache.get(ledgerId) == null) {
+            //如果masterKeyCache里面没有该ledgerId对应的masterKey的话，就直接放进去
             // Force the load into masterKey cache
             byte[] oldValue = masterKeyCache.putIfAbsent(ledgerId, masterKey);
             if (oldValue == null) {
+                //如果oldValue也为nul的话，，那么还需要自己构建下
                 // new handle, we should add the key to journal ensure we can rebuild
                 ByteBuffer bb = ByteBuffer.allocate(8 + 8 + 4 + masterKey.length);
                 bb.putLong(ledgerId);
@@ -1353,6 +1361,7 @@ public class Bookie extends BookieCriticalThread {
         if (LOG.isTraceEnabled()) {
             LOG.trace("Adding {}@{}", entryId, ledgerId);
         }
+        //这里是写jounal，这里耗时
         getJournal(ledgerId).logAddEntry(entry, ackBeforeSync, cb, ctx);
     }
 
@@ -1458,11 +1467,13 @@ public class Bookie extends BookieCriticalThread {
             //分类帐描述符
             LedgerDescriptor handle = getLedgerForEntry(entry, masterKey);
             synchronized (handle) {
+                //看该ledger是否正在fenced
                 if (handle.isFenced()) {
                     throw BookieException
                             .create(BookieException.Code.LedgerFencedException);
                 }
                 entrySize = entry.readableBytes();
+                //这里是写逻辑
                 addEntryInternal(handle, entry, ackBeforeSync, cb, ctx, masterKey);
             }
             success = true;
@@ -1472,6 +1483,7 @@ public class Bookie extends BookieCriticalThread {
         } finally {
             long elapsedNanos = MathUtils.elapsedNanos(requestNanos);
             if (success) {
+                //这里统计纯粹的写磁盘耗时
                 bookieStats.getAddEntryStats().registerSuccessfulEvent(elapsedNanos, TimeUnit.NANOSECONDS);
                 bookieStats.getAddBytesStats().registerSuccessfulValue(entrySize);
             } else {

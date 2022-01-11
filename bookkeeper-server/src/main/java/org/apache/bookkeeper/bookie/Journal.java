@@ -66,17 +66,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 提供期刊相关管理。
  * Provide journal related management.
  */
 public class Journal extends BookieCriticalThread implements CheckpointSource {
 
     private static final Logger LOG = LoggerFactory.getLogger(Journal.class);
-
+    //条目列表回收器
     private static final RecyclableArrayList.Recycler<QueueEntry> entryListRecycler =
         new RecyclableArrayList.Recycler<QueueEntry>();
     private static final RecyclableArrayList<QueueEntry> EMPTY_ARRAY_LIST = new RecyclableArrayList<>();
 
     /**
+     * 过滤到拾取期刊。
      * Filter to pickup journals.
      */
     public interface JournalIdFilter {
@@ -97,6 +99,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
 
 
     /**
+     * 按指定的日志 ID 文件管理器列出所有日志 ID。
      * List all journal ids by a specified journal id filer.
      *
      * @param journalDir journal dir
@@ -129,6 +132,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 日志标记的包装器，为日志用户提供检查点以进行检查点。
      * A wrapper over log mark to provide a checkpoint for users of journal
      * to do checkpointing.
      */
@@ -169,11 +173,12 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 最后日志标记。
      * Last Log Mark.
      */
     public class LastLogMark {
         private final LogMark curMark;
-
+        //logId和log position位置
         LastLogMark(long logId, long logPosition) {
             this.curMark = new LogMark(logId, logPosition);
         }
@@ -193,21 +198,27 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         void rollLog(LastLogMark lastMark) throws NoWritableLedgerDirException {
             byte[] buff = new byte[16];
             ByteBuffer bb = ByteBuffer.wrap(buff);
+            // 我们应该记录在 markLog 中标记的 <logId, logPosition> ，这是安全的，
+            // 因为 lastMark 之前的记录已被持久化到磁盘（索引和条目记录器）
+            // 先更新上一次的
             // we should record <logId, logPosition> marked in markLog
             // which is safe since records before lastMark have been
             // persisted to disk (both index & entry logger)
+            // 这里会把上一次的mark位置写到bufer bb中
             lastMark.getCurMark().writeLogMark(bb);
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("RollLog to persist last marked log : {}", lastMark.getCurMark());
             }
 
+            //遍历所有的ledger 目录
             List<File> writableLedgerDirs = ledgerDirsManager
                     .getWritableLedgerDirsForNewLog();
             for (File dir : writableLedgerDirs) {
                 File file = new File(dir, lastMarkFileName);
                 FileOutputStream fos = null;
                 try {
+                    //然后这里会把buffer的数据写到每个
                     fos = new FileOutputStream(file);
                     fos.write(buff);
                     fos.getChannel().force(true);
@@ -225,6 +236,9 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         }
 
         /**
+         * 从 lastMark 文件中读取最后一个标记。
+         * 最后一个标记应该首先是 jounal id和对应的jounal文件位置.
+         *
          * Read last mark from lastMark file.
          * The last mark should first be max journal log id,
          * and then max log position in max journal log.
@@ -234,6 +248,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
             ByteBuffer bb = ByteBuffer.wrap(buff);
             LogMark mark = new LogMark();
             for (File dir: ledgerDirsManager.getAllLedgerDirs()) {
+                //这里是遍历每个ledger目录，从中读取lastMark文件里的写入的最后一个ledger文件Id和写入位置,读取到buffer中
                 File file = new File(dir, lastMarkFileName);
                 try {
                     try (FileInputStream fis = new FileInputStream(file)) {
@@ -244,8 +259,9 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                         }
                     }
                     bb.clear();
+                    //这里回从buffer中读取到mark中
                     mark.readLogMark(bb);
-                    if (curMark.compare(mark) < 0) {
+                    if (curMark.compare(mark) < 0) {//如果小于0，就代表这里读出来的mark更大一些，因此用来更新成当前的mark
                         curMark.setLogMark(mark.getLogFileId(), mark.getLogFileOffset());
                     }
                 } catch (IOException e) {
@@ -262,6 +278,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 过滤以返回滚动期刊列表。
      * Filter to return list of journals for rolling.
      */
     private static class JournalRollingFilter implements JournalIdFilter {
@@ -279,10 +296,12 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 用于扫描期刊的扫描仪。
      * Scanner used to scan a journal.
      */
     public interface JournalScanner {
         /**
+         * 处理日记帐分录。
          * Process a journal entry.
          *
          * @param journalVersion Journal Version
@@ -294,6 +313,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 要记录的日记帐分录。
      * Journal Entry to Record.
      */
     static class QueueEntry implements Runnable {
@@ -355,11 +375,13 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 表示需要强制写入日志的令牌。
      * Token which represents the need to force a write to the Journal.
      */
     @VisibleForTesting
     public class ForceWriteRequest {
         private JournalChannel logFile;
+        //攒批写
         private RecyclableArrayList<QueueEntry> forceWriteWaiters;
         private boolean shouldClose;
         private boolean isMarker;
@@ -368,23 +390,30 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         private long enqueueTime;
 
         public int process(boolean shouldForceWrite) throws IOException {
+            //强制写请求队列数减1
             journalStats.getForceWriteQueueSize().dec();
+            //更新在队列中的耗时
             journalStats.getFwEnqueueTimeStats()
                 .registerSuccessfulEvent(MathUtils.elapsedNanos(enqueueTime), TimeUnit.NANOSECONDS);
 
+            //如果是isMaker就直接返回
             if (isMarker) {
                 return 0;
             }
 
             try {
+                //是否应该强刷,只有shouldForceWrite为true的时候，才可以进入强制flush，否则跳过，然后直接走到后面触发回调
                 if (shouldForceWrite) {
+                    //如果要强刷的话，这里回强刷
                     long startTime = MathUtils.nowInNano();
                     this.logFile.forceWrite(false);
                     journalStats.getJournalSyncStats()
                         .registerSuccessfulEvent(MathUtils.elapsedNanos(startTime), TimeUnit.NANOSECONDS);
                 }
+                //这里在flush后，这里会更新logId和lastFlushedPosition
                 lastLogMark.setCurLogMark(this.logId, this.lastFlushedPosition);
 
+                //强制刷新成功后，这里回调用callback
                 // Notify the waiters that the force write succeeded
                 for (int i = 0; i < forceWriteWaiters.size(); i++) {
                     QueueEntry qe = forceWriteWaiters.get(i);
@@ -393,8 +422,10 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                     }
                 }
 
+                //返回强制刷新的entry数
                 return forceWriteWaiters.size();
             } finally {
+                //这里如果需要的话，会关闭该文件
                 closeFileIfNecessary();
             }
         }
@@ -430,6 +461,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         }
     }
 
+    //创建强制刷新请求
     private ForceWriteRequest createForceWriteRequest(JournalChannel logFile,
                           long logId,
                           long lastFlushedPosition,
@@ -457,6 +489,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
             };
 
     /**
+     * ForceWriteThread 是一个后台线程，它使日志定期持久化。
      * ForceWriteThread is a background thread which makes the journal durable periodically.
      *
      */
@@ -490,37 +523,50 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
             while (running) {
                 ForceWriteRequest req = null;
                 try {
+                    //从队列中取出来
                     req = forceWriteRequests.take();
+                    // 强制写入文件，然后通知写入完成
+                    // 第一次取出来isMarker是false
                     // Force write the file and then notify the write completions
                     //
                     if (!req.isMarker) {
+                        //是否应该强制刷新,刚开始为true
                         if (shouldForceWrite) {
+                            // 如果我们要强制写入，任何已经在队列中的请求都将受益于这种强制写入 - 在发出刷新之前发布一个标记，所以在遇到这个标记之前我们可以跳过强制写入
+                            // 默认enableGroupForceWrites是打开的
                             // if we are going to force write, any request that is already in the
                             // queue will benefit from this force write - post a marker prior to issuing
                             // the flush so until this marker is encountered we can skip the force write
                             if (enableGroupForceWrites) {
+                                //这里往队列中放入一个标记元素
                                 forceWriteRequests.put(createForceWriteRequest(req.logFile, 0, 0, null, false, true));
                             }
 
+                            // 如果我们要发出写入，记录最后一次强制写入的请求数，然后重置计数器，以便我们可以在即将发出的写入中累积请求
                             // If we are about to issue a write, record the number of requests in
                             // the last force write and then reset the counter so we can accumulate
                             // requests in the write we are about to issue
                             if (numReqInLastForceWrite > 0) {
+                                //这里更新metric
                                 journalStats.getForceWriteGroupingCountStats()
                                     .registerSuccessfulValue(numReqInLastForceWrite);
                                 numReqInLastForceWrite = 0;
                             }
                         }
                     }
+                    //开始强制刷新，shouldForceWrite第一次为true
                     numReqInLastForceWrite += req.process(shouldForceWrite);
 
                     if (enableGroupForceWrites
                             // if its a marker we should switch back to flushing
                             && !req.isMarker
+                            // shouldClose=true代表是要轮转的文件
+                            // 这表明这是给定文件中的最后一个请求，因此后续请求将转到另一个文件，因此我们应该在下一个请求时刷新
                             // This indicates that this is the last request in a given file
                             // so subsequent requests will go to a different file so we should
                             // flush on the next request
                             && !req.shouldClose) {
+                        //如果不是要轮转的文件，就不强制刷新了
                         shouldForceWrite = false;
                     } else {
                         shouldForceWrite = true;
@@ -596,6 +642,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     final File journalDirectory;
     final ServerConfiguration conf;
     final ForceWriteThread forceWriteThread;
+    // 我们将停止分组并发出刷新的时间
     // Time after which we will stop grouping and issue the flush
     private final long maxGroupWaitInNanos;
     // Threshold after which we flush any buffered journal entries
@@ -687,6 +734,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         this.flushWhenQueueEmpty = maxGroupWaitInNanos <= 0 || conf.getJournalFlushWhenQueueEmpty();
 
         this.removePagesFromCache = conf.getJournalRemovePagesFromCache();
+        // 如果jounal目录只有一个，那么就只生成一个lastMark文件，否则就生成lastMark.1 lastMark.2....这些文件
         // read last log mark
         if (conf.getJournalDirs().length == 1) {
             lastMarkFileName = LAST_MARK_DEFAULT_NAME;
@@ -747,7 +795,9 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         LogMarkCheckpoint lmcheckpoint = (LogMarkCheckpoint) checkpoint;
         LastLogMark mark = lmcheckpoint.mark;
 
+        //将mark持久化到磁盘
         mark.rollLog(mark);
+        //将小于mark位置的删除掉
         if (compact) {
             // list the journals that have been marked
             List<Long> logs = listJournalIds(journalDirectory, new JournalRollingFilter(mark));
@@ -868,11 +918,13 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         // Retain entry until it gets written to journal
         entry.retain();
 
+        //这里队列就加1了
         journalStats.getJournalQueueSize().inc();
         journalStats.getJournalCbQueueSize().inc();
 
         memoryLimitController.reserveMemory(entry.readableBytes());
 
+        //这里放入队列，这里是传入了入队时间的
         queue.put(QueueEntry.create(
                 entry, ackBeforeSync,  ledgerId, entryId, cb, ctx, MathUtils.nowInNano(),
                 journalStats.getJournalAddEntryStats(),
@@ -900,6 +952,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     }
 
     /**
+     * 用于将日志条目持久保存到日志文件的线程。
      * A thread used for persisting journal entries to journal files.
      *
      * <p>
@@ -918,45 +971,65 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     public void run() {
         LOG.info("Starting journal on {}", journalDirectory);
 
+        //判断是否开启了繁忙等待
         if (conf.isBusyWaitEnabled()) {
             try {
+                //等要有空闲cpu为当前线程
                 CpuAffinity.acquireCore();
             } catch (Exception e) {
                 LOG.warn("Unable to acquire CPU core for Journal thread: {}", e.getMessage(), e);
             }
         }
 
+        //toFlush是干嘛的
         RecyclableArrayList<QueueEntry> toFlush = entryListRecycler.newInstance();
+        //要flush的entry数
         int numEntriesToFlush = 0;
+        //buffer长度
         ByteBuf lenBuff = Unpooled.buffer(4);
+        //填充buff
         ByteBuf paddingBuff = Unpooled.buffer(2 * conf.getJournalAlignmentSize());
         paddingBuff.writeZero(paddingBuff.capacity());
 
+        //bc ： buffer channel
         BufferedChannel bc = null;
+        //logFile: journal channel
         JournalChannel logFile = null;
+        //启动强制写线程
         forceWriteThread.start();
         Stopwatch journalCreationWatcher = Stopwatch.createUnstarted();
         Stopwatch journalFlushWatcher = Stopwatch.createUnstarted();
         long batchSize = 0;
         try {
+            //列出该journal目录下所有的文件ID
             List<Long> journalIds = listJournalIds(journalDirectory, null);
+            // 不应使用 MathUtils.now()，它使用 System.nanoTime() 和
+            // 只能用于测量经过的时间。
             // Should not use MathUtils.now(), which use System.nanoTime() and
             // could only be used to measure elapsed time.
             // http://docs.oracle.com/javase/1.5.0/docs/api/java/lang/System.html#nanoTime%28%29
+            //如果journalIds为空，就说明该目录下没有文件，那么此时的logId就用当前时间戳，否则该logId选最后那一个
+            //第一个journal文件名，是以当前时间戳来命名的，后面是在该时间戳基础上不停递增+1
             long logId = journalIds.isEmpty() ? System.currentTimeMillis() : journalIds.get(journalIds.size() - 1);
+            //上次flush位置
             long lastFlushPosition = 0;
+            //当超时的时候，是否分组
             boolean groupWhenTimeout = false;
 
+            //出队列开始时间
             long dequeueStartTime = 0L;
+            //上次flush时间
             long lastFlushTimeMs = System.currentTimeMillis();
 
+            //这里是队列元素
             QueueEntry qe = null;
             while (true) {
+                // 如果logFile为null，那么需要打开一个文件
                 // new journal file to write
                 if (null == logFile) {
-
+                    //计算出下一个文件的Id
                     logId = logId + 1;
-
+                    //这个应该是专门用来统计时间的
                     journalCreationWatcher.reset().start();
                     logFile = new JournalChannel(journalDirectory, logId, journalPreAllocSize, journalWriteBufferSize,
                                         journalAlignmentSize, removePagesFromCache,
@@ -965,43 +1038,57 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                     journalStats.getJournalCreationStats().registerSuccessfulEvent(
                             journalCreationWatcher.stop().elapsed(TimeUnit.NANOSECONDS), TimeUnit.NANOSECONDS);
 
+                    //这里就对bc进行了复制，它对应的是一个文件
                     bc = logFile.getBufferedChannel();
 
                     lastFlushPosition = bc.position();
                 }
 
+                //如果qe为null，就从队列中取出写请求
                 if (qe == null) {
                     if (dequeueStartTime != 0) {
+                        //如果dequeueStartTime!=0，就说明不是第一次进入while循环
                         journalStats.getJournalProcessTimeStats()
                             .registerSuccessfulEvent(MathUtils.elapsedNanos(dequeueStartTime), TimeUnit.NANOSECONDS);
                     }
 
                     if (numEntriesToFlush == 0) {
+                        //如果要flush的为0，那么久取一个出来
                         qe = queue.take();
                         dequeueStartTime = MathUtils.nowInNano();
+                        //取出队列减1
                         journalStats.getJournalQueueSize().dec();
+                        //这里统计在队列里待了多久
                         journalStats.getJournalQueueStats()
                             .registerSuccessfulEvent(MathUtils.elapsedNanos(qe.enqueueTime), TimeUnit.NANOSECONDS);
                     } else {
+                        //maxGroupWaitInNanos这个默认是2秒，也就是说从入队开始算，最多等2秒
                         long pollWaitTimeNanos = maxGroupWaitInNanos
                                 - MathUtils.elapsedNanos(toFlush.get(0).enqueueTime);
                         if (flushWhenQueueEmpty || pollWaitTimeNanos < 0) {
+                            //如果flushWhenQueueEmpty=true或等待时间没哟了
                             pollWaitTimeNanos = 0;
                         }
+                        //这里是poll时间,那这里默认最多可能，等待将近2秒
                         qe = queue.poll(pollWaitTimeNanos, TimeUnit.NANOSECONDS);
                         dequeueStartTime = MathUtils.nowInNano();
 
                         if (qe != null) {
+                            //如果获取到请求了,那么这里减少队列size和更新在队列中带的时间
                             journalStats.getJournalQueueSize().dec();
                             journalStats.getJournalQueueStats()
                                 .registerSuccessfulEvent(MathUtils.elapsedNanos(qe.enqueueTime), TimeUnit.NANOSECONDS);
                         }
 
                         boolean shouldFlush = false;
+                        //如果以下三个条件中的任何一个成立，我们应该发出 forceWrite
+                        //  1. 如果最旧的待处理条目已待处理的时间超过最大等待时间
                         // We should issue a forceWrite if any of the three conditions below holds good
                         // 1. If the oldest pending entry has been pending for longer than the max wait time
                         if (maxGroupWaitInNanos > 0 && !groupWhenTimeout && (MathUtils
                                 .elapsedNanos(toFlush.get(0).enqueueTime) > maxGroupWaitInNanos)) {
+                            //maxGroupWaitInNanos默认是2秒，如果设置了并且maxGroupWaitInNanos为false，
+                            //并且第一个入队时间距离现在超过了maxGroupWaitInNanos,那么这里就设置groupWhenTimeout为true
                             groupWhenTimeout = true;
                         } else if (maxGroupWaitInNanos > 0 && groupWhenTimeout
                             && (qe == null // no entry to group
@@ -1018,6 +1105,7 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                         } else if (qe != null
                                 && ((bufferedEntriesThreshold > 0 && toFlush.size() > bufferedEntriesThreshold)
                                 || (bc.position() > lastFlushPosition + bufferedWritesThreshold))) {
+                            //已经超时了，还需要满足bufferedWritesThreshold条件，才能flush
                             // 2. If we have buffered more than the buffWriteThreshold or bufferedEntriesThreshold
                             groupWhenTimeout = false;
                             shouldFlush = true;
@@ -1033,23 +1121,28 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                         }
 
                         // toFlush is non null and not empty so should be safe to access getFirst
-                        if (shouldFlush) {
+                        if (shouldFlush) {//判断是否应该flush，第一次groupWhenTimeout没有设置shouldFlush=true
                             if (journalFormatVersionToWrite >= JournalChannel.V5) {
+                                //如果是V5版本，那么这里写入填充字节
                                 writePaddingBytes(logFile, paddingBuff, journalAlignmentSize);
                             }
                             journalFlushWatcher.reset().start();
+                            //这里开始flush
                             bc.flush();
 
                             for (int i = 0; i < toFlush.size(); i++) {
                                 QueueEntry entry = toFlush.get(i);
+                                //如果syncData=false，或者entry开启了ack在sync之前，那么这里回直接回调
                                 if (entry != null && (!syncData || entry.ackBeforeSync)) {
                                     toFlush.set(i, null);
                                     numEntriesToFlush--;
+                                    //这里开始触发回调
                                     cbThreadPool.execute(entry);
                                 }
                             }
 
                             lastFlushPosition = bc.position();
+                            //这里统计flush耗时
                             journalStats.getJournalFlushStats().registerSuccessfulEvent(
                                     journalFlushWatcher.stop().elapsed(TimeUnit.NANOSECONDS), TimeUnit.NANOSECONDS);
 
@@ -1062,13 +1155,18 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                                     }
                                 }
                             }
-
+                            //统计一次flush的entry数
                             journalStats.getForceWriteBatchEntriesStats()
                                 .registerSuccessfulValue(numEntriesToFlush);
                             journalStats.getForceWriteBatchBytesStats()
                                 .registerSuccessfulValue(batchSize);
 
+                            //这里看看是否要轮转
                             boolean shouldRolloverJournal = (lastFlushPosition > maxJournalSize);
+                            //触发自动刷盘，有三种case：
+                            //1.开启了syncData数据同步;
+                            //2.应该轮转了；
+                            //3.达到了flush周期
                             // Trigger data sync to disk in the "Force-Write" thread.
                             // Trigger data sync to disk has three situations:
                             // 1. journalSyncData enabled, usually for SSD used as journal storage
@@ -1082,10 +1180,14 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                                     || shouldRolloverJournal
                                     || (System.currentTimeMillis() - lastFlushTimeMs
                                     >= journalPageCacheFlushIntervalMSec)) {
+                                //这里放入队列
+                                //注意这里的ismarker为false
+                                //如果是要轮转触发的话，这里传入的shouldClose就为true
                                 forceWriteRequests.put(createForceWriteRequest(logFile, logId, lastFlushPosition,
                                         toFlush, shouldRolloverJournal, false));
                                 lastFlushTimeMs = System.currentTimeMillis();
                             }
+                            //这里将变量重置
                             toFlush = entryListRecycler.newInstance();
                             numEntriesToFlush = 0;
 
@@ -1101,16 +1203,20 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                     }
                 }
 
+                // 如果不是在运行，那么这里回break
                 if (!running) {
                     LOG.info("Journal Manager is asked to shut down, quit.");
                     break;
                 }
 
+                //如果qe为null就继续下一个
                 if (qe == null) { // no more queue entry
                     continue;
                 }
                 if ((qe.entryId == Bookie.METAENTRY_ID_LEDGER_EXPLICITLAC)
                         && (journalFormatVersionToWrite < JournalChannel.V6)) {
+                    //这意味着我们正在使用支持持久显式Lac 的新代码，但 journalFormatVersionToWrite 设置为某个较旧的值（< V6）。
+                    //在这种情况下，我们不应将此特殊条目 (METAENTRY_ID_LEDGER_EXPLICITLAC) 写入 Journal。
                     /*
                      * this means we are using new code which supports
                      * persisting explicitLac, but "journalFormatVersionToWrite"
@@ -1121,25 +1227,34 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
                     memoryLimitController.releaseMemory(qe.entry.readableBytes());
                     qe.entry.release();
                 } else if (qe.entryId != Bookie.METAENTRY_ID_FORCE_LEDGER) {
+                    //如果不是强制force ledger的entry id
                     int entrySize = qe.entry.readableBytes();
+                    //统计写journal的bytes 速率
                     journalStats.getJournalWriteBytes().add(entrySize);
-
+                    // 攒batch的大小batchSize，加4是因为前面四个字节用来存放entrySize大小
                     batchSize += (4 + entrySize);
 
                     lenBuff.clear();
                     lenBuff.writeInt(entrySize);
 
+                    //如果需要的话，预先分配大小
                     // preAlloc based on size
                     logFile.preAllocIfNeeded(4 + entrySize);
 
+                    //然后这里写到文件里
+                    //先写entrysize，再写entry
                     bc.write(lenBuff);
                     bc.write(qe.entry);
+                    //最后释放掉内存
                     memoryLimitController.releaseMemory(qe.entry.readableBytes());
                     qe.entry.release();
                 }
 
+                //添加到要flush的列表中
                 toFlush.add(qe);
+                //flush数加1
                 numEntriesToFlush++;
+                //qe设置未null
                 qe = null;
             }
         } catch (IOException ioe) {

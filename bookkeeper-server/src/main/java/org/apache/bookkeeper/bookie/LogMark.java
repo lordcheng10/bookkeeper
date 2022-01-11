@@ -22,6 +22,7 @@ package org.apache.bookkeeper.bookie;
 import java.nio.ByteBuffer;
 
 /**
+ * 日志流位置。
  * Journal stream position.
  */
 public class LogMark {
@@ -54,7 +55,7 @@ public class LogMark {
         logFileId = bb.getLong();
         logFileOffset = bb.getLong();
     }
-
+    //这个应该分别对应的是某个ledger目录对应的写入的最后一个ledger文件编号和对应文件位置
     public synchronized void writeLogMark(ByteBuffer bb) {
         bb.putLong(logFileId);
         bb.putLong(logFileOffset);

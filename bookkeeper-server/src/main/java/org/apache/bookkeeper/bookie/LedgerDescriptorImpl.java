@@ -152,6 +152,7 @@ public class LedgerDescriptorImpl extends LedgerDescriptor {
             throw new IOException("Entry for ledger " + ledgerId + " was sent to " + this.ledgerId);
         }
 
+        //这里会根据ledgerId来找到对应的存储目录
         return ledgerStorage.addEntry(entry);
     }
 

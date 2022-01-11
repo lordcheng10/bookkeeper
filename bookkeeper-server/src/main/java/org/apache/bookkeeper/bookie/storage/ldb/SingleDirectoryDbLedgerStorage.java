@@ -307,7 +307,7 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
     @Override
     public long addEntry(ByteBuf entry) throws IOException, BookieException {
         long startTime = MathUtils.nowInNano();
-
+        //获取ledgerId、entryId、lac
         long ledgerId = entry.getLong(entry.readerIndex());
         long entryId = entry.getLong(entry.readerIndex() + 8);
         long lac = entry.getLong(entry.readerIndex() + 16);
@@ -338,6 +338,7 @@ public class SingleDirectoryDbLedgerStorage implements CompactableLedgerStorage 
             }
         }
 
+        //如果没放成功，就尝试触发flush
         if (!inserted) {
             triggerFlushAndAddEntry(ledgerId, entryId, entry);
         }

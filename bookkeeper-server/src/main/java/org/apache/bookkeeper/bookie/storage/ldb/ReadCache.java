@@ -66,6 +66,7 @@ public class ReadCache implements Closeable {
 
     public ReadCache(ByteBufAllocator allocator, long maxCacheSize, int maxSegmentSize) {
         this.allocator = allocator;
+        //maxSegmentSize这个写死的是1G
         int segmentsCount = Math.max(2, (int) (maxCacheSize / maxSegmentSize));
         segmentSize = (int) (maxCacheSize / segmentsCount);
 
@@ -94,9 +95,11 @@ public class ReadCache implements Closeable {
             if (offset + entrySize > segmentSize) {
                 // Roll-over the segment (outside the read-lock)
             } else {
+                //currentSegmentIdx这个记录了当前可放数据的segment位置
                 // Copy entry into read cache segment
                 cacheSegments.get(currentSegmentIdx).setBytes(offset, entry, entry.readerIndex(),
                         entry.readableBytes());
+                //这里是记录索引,有两个key和value
                 cacheIndexes.get(currentSegmentIdx).put(ledgerId, entryId, offset, entrySize);
                 return;
             }
@@ -110,10 +113,13 @@ public class ReadCache implements Closeable {
 
         try {
             int offset = currentSegmentOffset.getAndAdd(entrySize);
+            //如果单个entrySize都大于segmentSize怎么办
             if (offset + entrySize > segmentSize) {
+                //更新当前的segment位置
                 // Rollover to next segment
                 currentSegmentIdx = (currentSegmentIdx + 1) % cacheSegments.size();
                 currentSegmentOffset.set(alignedSize);
+                //将选出的segment清空
                 cacheIndexes.get(currentSegmentIdx).clear();
                 offset = 0;
             }

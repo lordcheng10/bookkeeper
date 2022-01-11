@@ -761,6 +761,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 所有日志写入和提交都应与给定大小对齐。 如果没有，将填充零以与给定大小对齐。
      * All the journal writes and commits should be aligned to given size. If not,
      * zeros will be padded to align to given size.
      *
@@ -2152,6 +2153,7 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     }
 
     /**
+     * 我们是否应该对期刊强制写作进行分组。
      * Should we group journal force writes.
      *
      * @return group journal force writes

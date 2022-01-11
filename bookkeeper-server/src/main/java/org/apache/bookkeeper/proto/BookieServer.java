@@ -153,6 +153,7 @@ public class BookieServer {
     }
 
     public void start() throws InterruptedException {
+        //在这里启动的
         this.bookie.start();
         // fail fast, when bookie startup is not successful
         if (!this.bookie.isRunning()) {

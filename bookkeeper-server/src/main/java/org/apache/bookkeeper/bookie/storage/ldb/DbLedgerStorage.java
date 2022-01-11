@@ -81,6 +81,7 @@ public class DbLedgerStorage implements LedgerStorage {
 
     private static final int MB = 1024 * 1024;
 
+    //默认是1/4的堆外内存
     private static final long DEFAULT_WRITE_CACHE_MAX_SIZE_MB = (long) (0.25 * PlatformDependent.maxDirectMemory())
             / MB;
     private static final long DEFAULT_READ_CACHE_MAX_SIZE_MB = (long) (0.25 * PlatformDependent.maxDirectMemory())
@@ -117,6 +118,7 @@ public class DbLedgerStorage implements LedgerStorage {
             throw new IOException("Read and write cache sizes exceed the configured max direct memory size");
         }
 
+        //所以写缓存是用总的缓存/2/numberOfDirs ，因为它用了一个临时缓存，读缓存是用总的/numberOfDirs
         //每个目录对应的cache大小
         long perDirectoryWriteCacheSize = writeCacheMaxSize / numberOfDirs;
         long perDirectoryReadCacheSize = readCacheMaxSize / numberOfDirs;

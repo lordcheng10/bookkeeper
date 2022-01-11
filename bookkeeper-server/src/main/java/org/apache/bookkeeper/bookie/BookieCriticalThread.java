@@ -21,6 +21,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * 线程被标记为关键，当有未捕获时将退出
+ * 线程中发生异常。
  * Thread is marked as critical and will exit, when there is an uncaught
  * exception occurred in thread.
  */
