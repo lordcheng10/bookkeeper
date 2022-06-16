@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.bookkeeper.bookie.CheckpointSource.Checkpoint;
 import org.apache.bookkeeper.common.util.MathUtils;
 import org.apache.bookkeeper.util.collections.ConcurrentLongHashSet;
 import org.apache.bookkeeper.util.collections.ConcurrentLongLongHashMap;
@@ -86,6 +87,10 @@ public class WriteCache implements Closeable {
 
     private final ByteBufAllocator allocator;
 
+    private Checkpoint checkpoint;
+
+    private boolean isSingleDirectoryWriteCache;
+
     public WriteCache(ByteBufAllocator allocator, long maxCacheSize) {
         // Default maxSegmentSize set to 1Gb
         this(allocator, maxCacheSize, 1 * 1024 * 1024 * 1024);
@@ -123,6 +128,7 @@ public class WriteCache implements Closeable {
         index.clear();
         lastEntryMap.clear();
         deletedLedgers.clear();
+        checkpoint = null;
     }
 
     @Override
@@ -130,6 +136,22 @@ public class WriteCache implements Closeable {
         for (ByteBuf buf : cacheSegments) {
             buf.release();
         }
+    }
+
+    public void setCheckpoint(Checkpoint checkpoint){
+        this.checkpoint = checkpoint;
+    }
+
+    public Checkpoint getCheckpoint(){
+        return checkpoint;
+    }
+
+    public void isSingleDirectoryWriteCache(boolean isSingleDirectoryWriteCache){
+        this.isSingleDirectoryWriteCache = isSingleDirectoryWriteCache;
+    }
+
+    public boolean isSingleDirectoryWriteCache(){
+        return isSingleDirectoryWriteCache;
     }
 
     public boolean put(long ledgerId, long entryId, ByteBuf entry) {

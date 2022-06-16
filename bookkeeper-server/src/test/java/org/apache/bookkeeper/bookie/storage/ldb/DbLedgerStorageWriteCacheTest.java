@@ -28,6 +28,8 @@ import io.netty.buffer.Unpooled;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.bookie.BookieException.OperationRejectedException;
 import org.apache.bookkeeper.bookie.BookieImpl;
@@ -55,34 +57,38 @@ public class DbLedgerStorageWriteCacheTest {
         protected SingleDirectoryDbLedgerStorage newSingleDirectoryDbLedgerStorage(ServerConfiguration conf,
                 LedgerManager ledgerManager, LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager,
                 StatsLogger statsLogger, ScheduledExecutorService gcExecutor,
-                long writeCacheSize, long readCacheSize, int readAheadCacheBatchSize)
+                long writeCacheSize, long readCacheSize, int readAheadCacheBatchSize,
+                WriteCacheManager writeCacheManager, long perDirectoryBlockWriteCacheSize)
                 throws IOException {
             return new MockedSingleDirectoryDbLedgerStorage(conf, ledgerManager, ledgerDirsManager, indexDirsManager,
                                                             statsLogger, allocator, gcExecutor, writeCacheSize,
-                                                            readCacheSize, readAheadCacheBatchSize);
+                                                            readCacheSize, readAheadCacheBatchSize,
+                                                            writeCacheManager, perDirectoryBlockWriteCacheSize);
         }
 
         private static class MockedSingleDirectoryDbLedgerStorage extends SingleDirectoryDbLedgerStorage {
             public MockedSingleDirectoryDbLedgerStorage(ServerConfiguration conf, LedgerManager ledgerManager,
                     LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager, StatsLogger statsLogger,
                     ByteBufAllocator allocator, ScheduledExecutorService gcExecutor, long writeCacheSize,
-                    long readCacheSize, int readAheadCacheBatchSize) throws IOException {
+                    long readCacheSize, int readAheadCacheBatchSize, WriteCacheManager writeCacheManager,
+                    long perDirectoryBlockWriteCacheSize) throws IOException {
                 super(conf, ledgerManager, ledgerDirsManager, indexDirsManager,
-                      statsLogger, allocator, gcExecutor, writeCacheSize, readCacheSize, readAheadCacheBatchSize);
+                      statsLogger, allocator, gcExecutor, writeCacheSize, readCacheSize, readAheadCacheBatchSize,
+                        writeCacheManager, perDirectoryBlockWriteCacheSize);
             }
 
           @Override
           public void flush() throws IOException {
               flushMutex.lock();
               try {
-                  // Swap the write caches and block indefinitely to simulate a slow disk
-                  WriteCache tmp = writeCacheBeingFlushed;
-                  writeCacheBeingFlushed = writeCache;
-                  writeCache = tmp;
-
-                  // since the cache is switched, we can allow flush to be triggered
-                  hasFlushBeenTriggered.set(false);
-
+                  WriteCache freeWriteCache;
+                  try {
+                      freeWriteCache = writeCacheManager.pollFreeWriteCache(this, TimeUnit.MILLISECONDS.toNanos(10));
+                  } catch (InterruptedException e) {
+                      return;
+                  }
+                  WriteCache writeCacheTmp = writeCache;
+                  writeCache = freeWriteCache;
                   // Block the flushing thread
                   try {
                       Thread.sleep(1000);
