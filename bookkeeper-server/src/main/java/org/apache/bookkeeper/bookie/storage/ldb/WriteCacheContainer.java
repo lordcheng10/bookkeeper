@@ -284,7 +284,7 @@ public class WriteCacheContainer {
                     LOG.error("Error during flush", e);
                 } finally {
                     flushMutex.unlock();
-                    flushExecutorTime.add(MathUtils.elapsedNanos(startTime));
+                    flushExecutorTime.addLatency(MathUtils.elapsedNanos(startTime), TimeUnit.NANOSECONDS);
                 }
             }
         }
@@ -345,7 +345,7 @@ public class WriteCacheContainer {
                 } catch (IOException e) {
                     LOG.error("Error during flush", e);
                 } finally {
-                    flushExecutorTime.add(MathUtils.elapsedNanos(startTime));
+                    flushExecutorTime.addLatency(MathUtils.elapsedNanos(startTime), TimeUnit.NANOSECONDS);
                     cacheCount.add(-1 * count);
                     cacheSize.addAndGet(-1 * size);
                 }
