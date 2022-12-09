@@ -20,7 +20,6 @@ package org.apache.bookkeeper.statelib.impl.mvcc;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.util.Recycler;
-import io.netty.util.ReferenceCountUtil;
 import java.util.function.Predicate;
 import lombok.Data;
 import lombok.Getter;
@@ -90,7 +89,7 @@ public class MVCCRecord implements Recycled, Predicate<RangeOption<?>> {
 
     public void setValue(ByteBuf buf, ValueType valueType) {
         if (null != value) {
-            ReferenceCountUtil.safeRelease(value);
+            value.release();
         }
         this.value = buf;
         this.valueType = valueType;
@@ -105,7 +104,7 @@ public class MVCCRecord implements Recycled, Predicate<RangeOption<?>> {
 
     private void reset() {
         if (null != value) {
-            ReferenceCountUtil.safeRelease(value);
+            value.release();
             value = null;
         }
         modRev = -1L;

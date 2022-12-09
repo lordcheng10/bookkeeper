@@ -28,6 +28,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.bookie.BookieException.OperationRejectedException;
 import org.apache.bookkeeper.bookie.BookieImpl;
@@ -55,11 +56,11 @@ public class DbLedgerStorageWriteCacheTest {
         @Override
         protected SingleDirectoryDbLedgerStorage newSingleDirectoryDbLedgerStorage(ServerConfiguration conf,
             LedgerManager ledgerManager, LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager,
-            EntryLogger entryLogger, StatsLogger statsLogger,
+            EntryLogger entryLogger, StatsLogger statsLogger, ScheduledExecutorService gcExecutor,
             long writeCacheSize, long readCacheSize, int readAheadCacheBatchSize)
                 throws IOException {
             return new MockedSingleDirectoryDbLedgerStorage(conf, ledgerManager, ledgerDirsManager, indexDirsManager,
-                entryLogger, statsLogger, allocator, writeCacheSize,
+                entryLogger, statsLogger, allocator, gcExecutor, writeCacheSize,
                 readCacheSize, readAheadCacheBatchSize);
         }
 
@@ -67,10 +68,10 @@ public class DbLedgerStorageWriteCacheTest {
             public MockedSingleDirectoryDbLedgerStorage(ServerConfiguration conf, LedgerManager ledgerManager,
                     LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager, EntryLogger entryLogger,
                     StatsLogger statsLogger,
-                    ByteBufAllocator allocator, long writeCacheSize,
+                    ByteBufAllocator allocator, ScheduledExecutorService gcExecutor, long writeCacheSize,
                     long readCacheSize, int readAheadCacheBatchSize) throws IOException {
                 super(conf, ledgerManager, ledgerDirsManager, indexDirsManager, entryLogger,
-                      statsLogger, allocator, writeCacheSize, readCacheSize, readAheadCacheBatchSize);
+                      statsLogger, allocator, gcExecutor, writeCacheSize, readCacheSize, readAheadCacheBatchSize);
             }
 
           @Override

@@ -228,7 +228,7 @@ public abstract class DirectCompactionEntryLog implements CompactionEntryLog {
 
             this.writer = new WriterWithMetadata(
                     new DirectWriter(dstLogId, compactingFile.toString(), maxFileSize,
-                                     writeExecutor, writeBuffers, nativeIO, slog),
+                    writeExecutor, writeBuffers, nativeIO, slog),
                     new EntryLogMetadata(dstLogId),
                     allocator);
 

@@ -22,7 +22,6 @@ package org.apache.bookkeeper.bookie.storage.directentrylogger;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import org.apache.bookkeeper.bookie.storage.EntryLogScanner;
 
@@ -56,7 +55,7 @@ class LogReaderScan {
                 offset += entrySize;
             }
         } finally {
-            ReferenceCountUtil.safeRelease(entry);
+            entry.release();
         }
     }
 }

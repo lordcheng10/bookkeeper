@@ -29,10 +29,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import org.apache.bookkeeper.common.util.nativeio.NativeIO;
 import org.apache.bookkeeper.common.util.nativeio.NativeIOException;
+import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.bookkeeper.slogger.Slogger;
 import org.apache.commons.lang3.SystemUtils;
 
@@ -47,6 +49,9 @@ class DirectWriter implements LogWriter {
     final List<Future<?>> outstandingWrites = new ArrayList<Future<?>>();
     Buffer nativeBuffer;
     long offset;
+
+    long ledgerId = 0;
+
     private static volatile boolean useFallocate = true;
 
     DirectWriter(int id,
@@ -101,6 +106,10 @@ class DirectWriter implements LogWriter {
         DirectWriter.useFallocate = false;
     }
 
+    public void setLedgerId(long ledgerId) {
+        this.ledgerId = ledgerId;
+    }
+
     @Override
     public int logId() {
         return id;
@@ -121,11 +130,24 @@ class DirectWriter implements LogWriter {
 
         tmpBuffer.reset();
         tmpBuffer.writeByteBuf(buf);
-        Future<?> f = writeExecutor.submit(() -> {
-            writeByteBuf(tmpBuffer, bytesToWrite, offset);
-            return null;
+        if (writeExecutor instanceof OrderedExecutor) {
+            CompletableFuture<?> future = new CompletableFuture<>();
+            ((OrderedExecutor) writeExecutor).executeOrdered(ledgerId, () -> {
+                try {
+                    writeByteBuf(tmpBuffer, bytesToWrite, offset);
+                    future.complete(null);
+                } catch (IOException e) {
+                    future.completeExceptionally(e);
+                }
             });
-        addOutstandingWrite(f);
+            addOutstandingWrite(future);
+        } else {
+            Future<?> f = writeExecutor.submit(() -> {
+                writeByteBuf(tmpBuffer, bytesToWrite, offset);
+                return null;
+            });
+            addOutstandingWrite(f);
+        }
     }
 
     private void writeByteBuf(Buffer buffer, int bytesToWrite, long offsetToWrite) throws IOException{
@@ -296,11 +318,24 @@ class DirectWriter implements LogWriter {
                 long offsetToWrite = offset;
                 offset += bytesToWrite;
 
-                Future<?> f = writeExecutor.submit(() -> {
-                    writeByteBuf(bufferToFlush, bytesToWrite, offsetToWrite);
-                    return null;
-                });
-                addOutstandingWrite(f);
+                if (writeExecutor instanceof OrderedExecutor) {
+                    CompletableFuture<Void> future = new CompletableFuture<>();
+                    ((OrderedExecutor) writeExecutor).executeOrdered(ledgerId, () -> {
+                        try {
+                            writeByteBuf(bufferToFlush, bytesToWrite, offsetToWrite);
+                            future.complete(null);
+                        } catch (IOException e) {
+                            future.completeExceptionally(e);
+                        }
+                    });
+                    addOutstandingWrite(future);
+                } else {
+                    Future<?> f = writeExecutor.submit(() -> {
+                        writeByteBuf(bufferToFlush, bytesToWrite, offsetToWrite);
+                        return null;
+                    });
+                    addOutstandingWrite(f);
+                }
 
                 // must acquire after triggering the write
                 // otherwise it could try to acquire a buffer without kicking off

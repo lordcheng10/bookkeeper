@@ -25,7 +25,6 @@ import static org.apache.bookkeeper.common.util.ExceptionMessageHelper.exMsg;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.util.ReferenceCountUtil;
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -91,7 +90,7 @@ class DirectReader implements LogReader {
         try {
             readIntoBufferAt(buf, offset, size);
         } catch (IOException e) {
-            ReferenceCountUtil.safeRelease(buf);
+            buf.release();
             throw e;
         }
 
@@ -121,7 +120,7 @@ class DirectReader implements LogReader {
                 try {
                     return intBuf.getInt(0);
                 } finally {
-                    ReferenceCountUtil.safeRelease(intBuf);
+                    intBuf.release();
                 }
             }
         }
@@ -138,7 +137,7 @@ class DirectReader implements LogReader {
                 try {
                     return longBuf.getLong(0);
                 } finally {
-                    ReferenceCountUtil.safeRelease(longBuf);
+                    longBuf.release();
                 }
             }
         }
@@ -207,9 +206,12 @@ class DirectReader implements LogReader {
         long bufferOffset = 0;
         long bytesToRead = Math.min(blockSize, bytesAvailable);
         long bytesOutstanding = bytesToRead;
+        int attempts = 0;
         long bytesRead = -1;
         try {
             while (true) {
+                attempts++;
+
                 long readSize = blockSize - bufferOffset;
                 long pointerWithOffset = nativeBuffer.pointer(bufferOffset, readSize);
                 bytesRead = nativeIO.pread(fd, pointerWithOffset,

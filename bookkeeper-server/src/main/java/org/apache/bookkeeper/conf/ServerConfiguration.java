@@ -223,6 +223,8 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
     // Worker Thread parameters.
     protected static final String NUM_ADD_WORKER_THREADS = "numAddWorkerThreads";
     protected static final String NUM_READ_WORKER_THREADS = "numReadWorkerThreads";
+    protected static final String DIRECT_IO_ENTRY_LOGGER_FLUSH_THREADS = "directIoEntryLoggerFlushThreads";
+    protected static final String DIRECT_IO_ENTRY_LOGGER_WRITE_THREADS = "directIoEntryLoggerWriteThreads";
     protected static final String MAX_PENDING_READ_REQUESTS_PER_THREAD = "maxPendingReadRequestsPerThread";
     protected static final String MAX_PENDING_ADD_REQUESTS_PER_THREAD = "maxPendingAddRequestsPerThread";
     protected static final String NUM_LONG_POLL_WORKER_THREADS = "numLongPollWorkerThreads";
@@ -336,6 +338,8 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
 
     // Used for location index, lots of writes and much bigger dataset
     protected static final String LEDGER_METADATA_ROCKSDB_CONF = "ledgerMetadataRocksdbConf";
+
+    protected static final String NUMBER_OF_WRITE_BUFFERS = "numOfWriteBuffers";
 
     /**
      * Construct a default configuration object.
@@ -2033,6 +2037,24 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
      */
     public int getNumReadWorkerThreads() {
         return getInt(NUM_READ_WORKER_THREADS, 8);
+    }
+
+    public int getDirectIoEntryLoggerFlushThreads() {
+        return getInt(DIRECT_IO_ENTRY_LOGGER_FLUSH_THREADS, 1);
+    }
+
+    public ServerConfiguration setDirectIoEntryLoggerFlushThreads(int flushThreadsNum){
+        setProperty(DIRECT_IO_ENTRY_LOGGER_FLUSH_THREADS, flushThreadsNum);
+        return this;
+    }
+
+    public int getDirectIoEntryLoggerWriteThreads() {
+        return getInt(DIRECT_IO_ENTRY_LOGGER_WRITE_THREADS, 1);
+    }
+
+    public ServerConfiguration setDirectIoEntryLoggerWriteThreads(int writeThreadsNum){
+        setProperty(DIRECT_IO_ENTRY_LOGGER_WRITE_THREADS, writeThreadsNum);
+        return this;
     }
 
     /**
@@ -3813,6 +3835,15 @@ public class ServerConfiguration extends AbstractConfiguration<ServerConfigurati
      */
     public ServerConfiguration setEntryLogPerLedgerEnabled(boolean entryLogPerLedgerEnabled) {
         this.setProperty(ENTRY_LOG_PER_LEDGER_ENABLED, Boolean.toString(entryLogPerLedgerEnabled));
+        return this;
+    }
+
+    public int getNumOfWriteBuffers() {
+        return this.getInt(NUMBER_OF_WRITE_BUFFERS, 8);
+    }
+
+    public ServerConfiguration setNumOfWriteBuffers(int numOfWriteBuffers) {
+        this.setProperty(NUMBER_OF_WRITE_BUFFERS, Integer.toString(numOfWriteBuffers));
         return this;
     }
 

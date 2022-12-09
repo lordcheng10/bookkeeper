@@ -210,18 +210,18 @@ class EnvelopedEntryWriter implements Writer {
     @Override
     public void completeTransmit(long lssn, long entryId) {
         satisfyPromises(lssn, entryId);
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
         synchronized (this) {
-            ReferenceCountUtil.safeRelease(finalizedBuffer);
+            ReferenceCountUtil.release(finalizedBuffer);
         }
     }
 
     @Override
     public void abortTransmit(Throwable reason) {
         cancelPromises(reason);
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
         synchronized (this) {
-            ReferenceCountUtil.safeRelease(finalizedBuffer);
+            ReferenceCountUtil.release(finalizedBuffer);
         }
     }
 }

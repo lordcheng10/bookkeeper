@@ -19,7 +19,6 @@ package org.apache.distributedlog;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBuf;
-import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.bookkeeper.stats.StatsLogger;
@@ -81,7 +80,7 @@ class EnvelopedEntryReader implements Entry.Reader, RecordStream {
 
     private void releaseBuffer() {
         isExhausted = true;
-        ReferenceCountUtil.safeRelease(this.src);
+        this.src.release();
     }
 
     @Override

@@ -27,6 +27,7 @@ import java.io.IOException;
  * Interface for writing data to a bookkeeper entry log.
  */
 interface LogWriter extends AutoCloseable {
+    void setLedgerId(long ledgerId);
     /**
      * Return the ID of the log being written.
      */

@@ -27,7 +27,6 @@ import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.Lists;
 import io.netty.buffer.ByteBuf;
-import io.netty.util.ReferenceCountUtil;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -73,7 +72,7 @@ public class TestEntry {
         Assert.assertNull("Empty record set should return null",
             reader.nextRecord());
         assertEquals(refCnt - 1, reader.getSrcBuf().refCnt());
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
     }
 
     @Test(timeout = 20000)
@@ -98,7 +97,7 @@ public class TestEntry {
 
         ByteBuf buffer = writer.getBuffer();
         assertEquals("zero bytes", HEADER_LENGTH, buffer.readableBytes());
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
     }
 
     @Test(timeout = 20000)
@@ -159,7 +158,7 @@ public class TestEntry {
                 .setEntryId(0L)
                 .setEnvelopeEntry(true)
                 .buildReader();
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
         LogRecordWithDLSN record = reader.nextRecord();
         int numReads = 0;
         long expectedTxid = 0L;
@@ -277,7 +276,7 @@ public class TestEntry {
                 new DLSN(1L, 1L, 12L), 0, 0, 3,
                 new DLSN(1L, 1L, 12L), 12L);
 
-        ReferenceCountUtil.safeRelease(buffer);
+        buffer.release();
     }
 
     void verifyReadResult(ByteBuf data,

@@ -26,7 +26,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
-import io.netty.util.ReferenceCountUtil;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
@@ -390,7 +389,7 @@ public class JournalWriter implements Runnable {
                     buf,
                     false,
                     (rc, ledgerId, entryId, addr, ctx) -> {
-                        ReferenceCountUtil.safeRelease(buf);
+                        buf.release();
                         if (0 == rc) {
                             if (null != semaphore) {
                                 semaphore.release(len);

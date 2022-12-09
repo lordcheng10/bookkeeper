@@ -19,7 +19,6 @@ package org.apache.bookkeeper.client;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.util.ReferenceCountUtil;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -111,7 +110,7 @@ public class LedgerReader {
                             eid, BKException.Code.DigestMatchException, null, bookieAddress.getSocketAddress());
 
                     } finally {
-                        ReferenceCountUtil.safeRelease(buffer);
+                        buffer.release();
                     }
                 }
                 readResults.add(rr);

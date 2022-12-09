@@ -30,7 +30,6 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.util.ReferenceCountUtil;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -57,6 +56,7 @@ import org.apache.bookkeeper.bookie.storage.EntryLogIdsImpl;
 import org.apache.bookkeeper.bookie.storage.EntryLogScanner;
 import org.apache.bookkeeper.bookie.storage.EntryLogger;
 import org.apache.bookkeeper.common.util.nativeio.NativeIO;
+import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.slogger.Slogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 
@@ -64,27 +64,48 @@ import org.apache.bookkeeper.stats.StatsLogger;
  * DirectEntryLogger.
  */
 public class DirectEntryLogger implements EntryLogger {
-    private final Slogger slog;
-    private final File ledgerDir;
-    private final EntryLogIds ids;
-    private final ExecutorService writeExecutor;
-    private final ExecutorService flushExecutor;
-    private final long maxFileSize;
-    private final DirectEntryLoggerStats stats;
-    private final ByteBufAllocator allocator;
-    private final BufferPool writeBuffers;
+    protected final Slogger slog;
+    protected final File ledgerDir;
+    protected final EntryLogIds ids;
+    protected final ExecutorService writeExecutor;
+    protected final ExecutorService flushExecutor;
+    protected final long maxFileSize;
+    protected final DirectEntryLoggerStats stats;
+    protected final ByteBufAllocator allocator;
+    protected final BufferPool writeBuffers;
     private final int readBufferSize;
     private final int maxSaneEntrySize;
-    private final Set<Integer> unflushedLogs;
+    protected final Set<Integer> unflushedLogs;
 
     private WriterWithMetadata curWriter;
 
-    private List<Future<?>> pendingFlushes;
-    private final NativeIO nativeIO;
+    protected List<Future<?>> pendingFlushes;
+    protected final NativeIO nativeIO;
     private final List<Cache<?, ?>> allCaches = new CopyOnWriteArrayList<>();
     private final ThreadLocal<Cache<Integer, LogReader>> caches;
 
-    private static final int NUMBER_OF_WRITE_BUFFERS = 8;
+   final int numOfWriteBuffers;
+
+    public DirectEntryLogger(ServerConfiguration conf,
+                       File ledgerDir,
+                       EntryLogIds ids,
+                       NativeIO nativeIO,
+                       ByteBufAllocator allocator,
+                       ExecutorService writeExecutor,
+                       ExecutorService flushExecutor,
+                       long maxFileSize,
+                       int maxSaneEntrySize,
+                       long totalWriteBufferSize,
+                       long totalReadBufferSize,
+                       int readBufferSize,
+                       int numReadThreads,
+                       int maxFdCacheTimeSeconds,
+                       Slogger slogParent,
+                       StatsLogger stats) throws IOException {
+        this(ledgerDir, ids, nativeIO, allocator, writeExecutor, flushExecutor, maxFileSize, maxSaneEntrySize,
+                totalWriteBufferSize, totalReadBufferSize, readBufferSize, numReadThreads, maxFdCacheTimeSeconds,
+                slogParent, stats, conf.getNumOfWriteBuffers());
+    }
 
     public DirectEntryLogger(File ledgerDir,
                              EntryLogIds ids,
@@ -101,6 +122,28 @@ public class DirectEntryLogger implements EntryLogger {
                              int maxFdCacheTimeSeconds,
                              Slogger slogParent,
                              StatsLogger stats) throws IOException {
+        this(ledgerDir, ids, nativeIO, allocator, writeExecutor, flushExecutor, maxFileSize, maxSaneEntrySize,
+                totalWriteBufferSize, totalReadBufferSize, readBufferSize, numReadThreads, maxFdCacheTimeSeconds,
+                slogParent, stats, 8);
+    }
+
+    public DirectEntryLogger(File ledgerDir,
+                             EntryLogIds ids,
+                             NativeIO nativeIO,
+                             ByteBufAllocator allocator,
+                             ExecutorService writeExecutor,
+                             ExecutorService flushExecutor,
+                             long maxFileSize,
+                             int maxSaneEntrySize,
+                             long totalWriteBufferSize,
+                             long totalReadBufferSize,
+                             int readBufferSize,
+                             int numReadThreads,
+                             int maxFdCacheTimeSeconds,
+                             Slogger slogParent,
+                             StatsLogger stats,
+                             int numOfWriteBuffers) throws IOException {
+        this.numOfWriteBuffers = numOfWriteBuffers;
         this.ledgerDir = ledgerDir;
         this.flushExecutor = flushExecutor;
         this.writeExecutor = writeExecutor;
@@ -118,8 +161,8 @@ public class DirectEntryLogger implements EntryLogger {
 
         this.allocator = allocator;
 
-        int singleWriteBufferSize = Buffer.nextAlignment((int) (totalWriteBufferSize / NUMBER_OF_WRITE_BUFFERS));
-        this.writeBuffers = new BufferPool(nativeIO, singleWriteBufferSize, NUMBER_OF_WRITE_BUFFERS);
+        int singleWriteBufferSize = Buffer.nextAlignment((int) (totalWriteBufferSize / numOfWriteBuffers));
+        this.writeBuffers = new BufferPool(nativeIO, singleWriteBufferSize, numOfWriteBuffers);
 
         // The total read buffer memory needs to get split across all the read threads, since the caches
         // are thread-specific and we want to ensure we don't pass the total memory limit.
@@ -322,7 +365,7 @@ public class DirectEntryLogger implements EntryLogger {
         }
     }
 
-    private void flushAndCloseCurrent() throws IOException {
+    protected void flushAndCloseCurrent() throws IOException {
         WriterWithMetadata flushWriter;
 
         CompletableFuture<Void> flushPromise = new CompletableFuture<>();
@@ -446,17 +489,17 @@ public class DirectEntryLogger implements EntryLogger {
                                 maxSaneEntrySize, stats.getReadBlockStats());
     }
 
-    private LogWriter newDirectWriter(int newId) throws IOException {
+    protected LogWriter newDirectWriter(int newId) throws IOException {
         unflushedLogs.add(newId);
         LogWriter writer = new DirectWriter(newId, logFilename(ledgerDir, newId), maxFileSize,
-                                            writeExecutor, writeBuffers, nativeIO, slog);
+        writeExecutor, writeBuffers, nativeIO, slog);
         ByteBuf buf = allocator.buffer(Buffer.ALIGNMENT);
         try {
             Header.writeEmptyHeader(buf);
             writer.writeAt(0, buf);
             writer.position(buf.capacity());
         } finally {
-            ReferenceCountUtil.safeRelease(buf);
+            buf.release();
         }
         return writer;
     }
